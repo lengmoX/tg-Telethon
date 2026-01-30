@@ -1,15 +1,24 @@
-name: Build Executables
+name: Build and Release
 
 on:
   push:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            artifact_name: tgf
+            asset_name: tgf-linux
+          - os: windows-latest
+            artifact_name: tgf.exe
+            asset_name: tgf-windows.exe
     
     runs-on: ${{ matrix.os }}
     
@@ -32,5 +41,37 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tgf-${{ matrix.os }}
-          path: dist/tgf*
+          name: ${{ matrix.asset_name }}
+          path: dist/${{ matrix.artifact_name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tgf-linux
+          path: ./artifacts/
+      
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tgf-windows.exe
+          path: ./artifacts/
+      
+      - name: Rename artifacts
+        run: |
+          mv ./artifacts/tgf ./artifacts/tgf-linux
+          mv ./artifacts/tgf.exe ./artifacts/tgf-windows.exe 2>/dev/null || true
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ./artifacts/tgf-linux
+            ./artifacts/tgf-windows.exe
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
