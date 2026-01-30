@@ -76,7 +76,7 @@ def build(onefile: bool = False):
     else:
         exe_path = Path("dist") / APP_NAME
     
-    print(f"\n✓ Build complete!")
+    print(f"\n[OK] Build complete!")
     print(f"  Output: {exe_path.absolute()}")
     
     if not onefile:
