@@ -65,14 +65,23 @@ tgf -n work login
 ### 手动转发
 
 ```bash
-# 转发到"已保存的消息"
-tgf forward -s @channel -t me --limit 10
+# 转发单条消息到"已保存的消息"
+tgf forward --from https://t.me/durov/1
+
+# 转发到指定频道
+tgf forward --from https://t.me/channel/123 --to @mychannel
+
+# 转发多条消息
+tgf forward --from https://t.me/ch/1 --from https://t.me/ch/2 --to me
+
+# 从导出的 JSON 文件转发
+tgf forward --from tgf-export.json --to @target
 
 # 使用原生转发模式
-tgf forward -s @source -t @target --mode direct
+tgf forward --from https://t.me/channel/123 --mode direct
 
 # 预览模式（不实际转发）
-tgf forward -s @channel -t me --dry-run
+tgf forward --from https://t.me/channel/123 --dry-run
 ```
 
 ### 规则管理
@@ -128,6 +137,13 @@ tgf status
 | `tgf rule show` | 查看规则详情 |
 | `tgf rule edit` | 编辑规则 |
 | `tgf rule remove` | 删除规则 |
+| `tgf filter add` | 添加全局过滤器 |
+| `tgf filter list` | 列出过滤器 |
+| `tgf filter remove` | 删除过滤器 |
+| `tgf filter test` | 测试过滤规则 |
+| `tgf backup export` | 导出备份 |
+| `tgf backup import` | 导入备份 |
+| `tgf backup list` | 查看备份内容 |
 | `tgf watch` | 启动监听模式 |
 | `tgf status` | 查看同步状态 |
 | `tgf info` | 显示配置信息 |

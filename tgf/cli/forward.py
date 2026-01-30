@@ -1,123 +1,199 @@
 """
 TGF Forward Command
 
-Manual message forwarding.
+Forward messages between chats with URL/link support.
 """
 
+import re
+import json
 import click
+from pathlib import Path
+from typing import List, Tuple, Optional
 
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
 from tgf.cli.utils import (
     console, async_command, require_login,
     print_success, print_error, print_info, print_warning,
-    create_table, format_chat
 )
-from tgf.service.forward_service import ForwardService, ForwardOptions, ForwardProgress
-from tgf.core.forwarder import ForwardMode
+from tgf.core.client import TGClient
+from tgf.core.forwarder import MessageForwarder, ForwardMode, ForwardResult
 from tgf.data.config import get_config
 
 
-@click.command()
+# Regex patterns for Telegram message links
+LINK_PATTERNS = [
+    # Public channel: https://t.me/channel/123
+    re.compile(r'https?://t\.me/([a-zA-Z][a-zA-Z0-9_]{3,})/(\d+)(?:/(\d+))?'),
+    # Private channel: https://t.me/c/1234567890/123
+    re.compile(r'https?://t\.me/c/(\d+)/(\d+)(?:/(\d+))?'),
+]
+
+
+def parse_message_link(link: str) -> Optional[Tuple[str, int]]:
+    """
+    Parse Telegram message link to (chat, message_id)
+    
+    Returns:
+        Tuple of (chat_identifier, message_id) or None
+    """
+    link = link.strip()
+    
+    # Try public channel pattern
+    match = LINK_PATTERNS[0].match(link)
+    if match:
+        username = match.group(1)
+        msg_id = int(match.group(2))
+        return (f"@{username}", msg_id)
+    
+    # Try private channel pattern
+    match = LINK_PATTERNS[1].match(link)
+    if match:
+        channel_id = match.group(1)
+        msg_id = int(match.group(2))
+        # Convert to full channel ID with -100 prefix
+        return (f"-100{channel_id}", msg_id)
+    
+    return None
+
+
+def load_from_json(filepath: str) -> List[Tuple[str, int]]:
+    """Load message references from exported JSON file"""
+    path = Path(filepath)
+    if not path.exists():
+        raise click.BadParameter(f"File not found: {filepath}")
+    
+    with open(path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    
+    results = []
+    chat_id = data.get('chat', {}).get('id')
+    
+    if not chat_id:
+        raise click.BadParameter(f"Invalid JSON format: missing chat.id")
+    
+    for msg in data.get('messages', []):
+        msg_id = msg.get('id')
+        if msg_id:
+            results.append((str(chat_id), msg_id))
+    
+    return results
+
+
+@click.command('forward')
 @click.option(
-    '-s', '--source',
+    '--from', 'sources',
+    multiple=True,
     required=True,
-    help='Source channel/group (username, ID, or link)',
-    metavar='CHAT'
+    help='Message source: URL (https://t.me/xxx/123) or JSON file',
+    metavar='SOURCE'
 )
 @click.option(
-    '-t', '--target',
-    required=True,
-    help='Target channel/group (username, ID, or link)',
+    '--to', 'dest',
+    default='me',
+    help='Destination chat (default: Saved Messages)',
     metavar='CHAT'
 )
 @click.option(
     '-m', '--mode',
     type=click.Choice(['clone', 'direct']),
     default='clone',
-    help='Forward mode: clone (no header) or direct (with header)'
-)
-@click.option(
-    '--limit',
-    type=int,
-    default=None,
-    help='Maximum number of messages to forward'
-)
-@click.option(
-    '--from-id',
-    type=int,
-    default=0,
-    help='Start from this message ID (forward messages > from_id)'
-)
-@click.option(
-    '--to-id',
-    type=int,
-    default=0,
-    help='End at this message ID (forward messages < to_id)'
+    help='Forward mode (default: clone)'
 )
 @click.option(
     '--dry-run',
     is_flag=True,
-    help='Preview without actually forwarding'
+    help='Preview without forwarding'
 )
 @click.option(
-    '--no-fallback',
+    '--silent',
     is_flag=True,
-    help='Disable download fallback for restricted channels'
+    help='Send without notification'
 )
 @click.pass_context
 @async_command
 @require_login
 async def forward(
     ctx,
-    source: str,
-    target: str,
+    sources: Tuple[str],
+    dest: str,
     mode: str,
-    limit: int,
-    from_id: int,
-    to_id: int,
     dry_run: bool,
-    no_fallback: bool
+    silent: bool
 ):
     """
-    Forward messages from source to target
+    Forward messages from source to destination
+    
+    \b
+    SOURCE can be:
+      - Message link: https://t.me/channel/123
+      - Private link: https://t.me/c/1234567890/123
+      - Exported JSON file: tgf-export.json
+    
+    \b
+    DEST (--to) can be:
+      - me (Saved Messages, default)
+      - @username
+      - Chat ID
+      - Channel link
     
     \b
     Examples:
-      tgf forward -s @durov -t me --limit 10
-      tgf forward -s @channel -t @mychannel --mode direct
-      tgf forward -s @channel -t me --from-id 1234 --dry-run
-    
-    \b
-    Modes:
-      clone:  Copy message content without "Forwarded from" header (default)
-      direct: Use native forward API with header
+      tgf forward --from https://t.me/durov/1
+      tgf forward --from https://t.me/channel/123 --to @mychannel
+      tgf forward --from link1 --from link2 --to 123456789
+      tgf forward --from export.json --mode direct
     """
     config = ctx.obj["config"]
     namespace = ctx.obj["namespace"]
     
     if dry_run:
-        print_warning("DRY RUN - No messages will be forwarded")
+        print_warning("DRY RUN - Messages will not be forwarded")
     
-    options = ForwardOptions(
-        mode=ForwardMode(mode),
-        limit=limit,
-        from_id=from_id,
-        to_id=to_id,
-        dry_run=dry_run,
-        fallback_to_download=not no_fallback
-    )
+    # Parse all sources
+    messages_to_forward = []
     
-    print_info(f"Source: {format_chat(source)}")
-    print_info(f"Target: {format_chat(target)}")
-    print_info(f"Mode:   {mode}")
+    for source in sources:
+        source = source.strip()
+        
+        # Check if it's a JSON file
+        if source.endswith('.json') or Path(source).exists():
+            try:
+                msgs = load_from_json(source)
+                messages_to_forward.extend(msgs)
+                print_info(f"Loaded {len(msgs)} messages from {source}")
+            except Exception as e:
+                print_error(f"Failed to load {source}: {e}")
+                continue
+        else:
+            # Try to parse as link
+            parsed = parse_message_link(source)
+            if parsed:
+                messages_to_forward.append(parsed)
+            else:
+                print_error(f"Invalid source format: {source}")
     
-    if limit:
-        print_info(f"Limit:  {limit}")
+    if not messages_to_forward:
+        print_error("No valid messages to forward")
+        raise click.Abort()
     
-    console.print()
+    print_info(f"Found {len(messages_to_forward)} message(s) to forward")
+    print_info(f"Destination: {dest}")
+    print_info(f"Mode: {mode}")
     
-    async with ForwardService(config, namespace) as service:
+    async with TGClient(config, namespace) as client:
+        forwarder = MessageForwarder(client)
+        
+        # Get destination entity
+        try:
+            dest_entity = await client.get_entity(dest)
+        except Exception as e:
+            print_error(f"Cannot find destination: {e}")
+            raise click.Abort()
+        
+        success_count = 0
+        fail_count = 0
+        
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -125,110 +201,62 @@ async def forward(
             TaskProgressColumn(),
             console=console
         ) as progress:
-            task_id = progress.add_task("Forwarding...", total=None)
+            task = progress.add_task("Forwarding...", total=len(messages_to_forward))
             
-            def on_progress(p: ForwardProgress):
-                if p.total > 0:
-                    progress.update(task_id, total=p.total, completed=p.processed)
-                    progress.update(
-                        task_id,
-                        description=f"Forwarding... ({p.success}✓ {p.failed}✗)"
-                    )
+            # Group messages by source chat for efficiency
+            from collections import defaultdict
+            by_chat = defaultdict(list)
+            for chat_id, msg_id in messages_to_forward:
+                by_chat[chat_id].append(msg_id)
             
-            try:
-                result = await service.forward(
-                    source, target, options, on_progress
-                )
+            for chat_id, msg_ids in by_chat.items():
+                try:
+                    source_entity = await client.get_entity(chat_id)
+                except Exception as e:
+                    print_warning(f"Cannot access chat {chat_id}: {e}")
+                    fail_count += len(msg_ids)
+                    progress.advance(task, len(msg_ids))
+                    continue
                 
-                progress.update(task_id, completed=result.total)
-                
-            except Exception as e:
-                print_error(f"Forward failed: {e}")
-                raise click.Abort()
-    
-    console.print()
-    
-    # Print summary
-    if dry_run:
-        print_success(f"Would forward {result.total} messages")
-    else:
-        print_success(f"Forwarded {result.success}/{result.total} messages")
+                for msg_id in msg_ids:
+                    if dry_run:
+                        print_info(f"[DRY RUN] Would forward: {chat_id}/{msg_id}")
+                        success_count += 1
+                    else:
+                        try:
+                            # Get the message
+                            msgs = await client.get_messages(source_entity, ids=[msg_id])
+                            if not msgs or not msgs[0]:
+                                print_warning(f"Message not found: {msg_id}")
+                                fail_count += 1
+                                continue
+                            
+                            msg = msgs[0]
+                            
+                            # Forward it
+                            result = await forwarder.forward_message(
+                                msg,
+                                dest_entity,
+                                mode=ForwardMode(mode)
+                            )
+                            
+                            if result.success:
+                                success_count += 1
+                            else:
+                                fail_count += 1
+                                print_warning(f"Failed {msg_id}: {result.error}")
+                                
+                        except Exception as e:
+                            fail_count += 1
+                            print_warning(f"Error forwarding {msg_id}: {e}")
+                    
+                    progress.advance(task)
         
-        if result.failed > 0:
-            print_warning(f"{result.failed} messages failed")
-    
-    # Show stats
-    elapsed = result.elapsed_seconds
-    rate = result.success / elapsed if elapsed > 0 else 0
-    
-    console.print(f"  [dim]Time: {elapsed:.1f}s ({rate:.1f} msg/s)[/dim]")
-
-
-@click.command('preview')
-@click.option(
-    '-s', '--source',
-    required=True,
-    help='Source channel/group',
-    metavar='CHAT'
-)
-@click.option(
-    '--limit',
-    type=int,
-    default=10,
-    help='Number of messages to preview'
-)
-@click.option(
-    '--from-id',
-    type=int,
-    default=0,
-    help='Start from this message ID'
-)
-@click.pass_context
-@async_command
-@require_login
-async def preview(ctx, source: str, limit: int, from_id: int):
-    """
-    Preview messages without forwarding
-    
-    \b
-    Examples:
-      tgf preview -s @channel --limit 5
-    """
-    config = ctx.obj["config"]
-    namespace = ctx.obj["namespace"]
-    
-    print_info(f"Previewing messages from: {format_chat(source)}")
-    console.print()
-    
-    async with ForwardService(config, namespace) as service:
-        try:
-            messages = await service.preview_messages(source, limit, from_id)
-            
-            if not messages:
-                print_info("No messages found")
-                return
-            
-            table = create_table(
-                f"Messages in {source}",
-                ["ID", "Date", "Type", "Content"]
-            )
-            
-            for msg in messages:
-                msg_type = msg.get("media_type", "text")
-                if msg.get("media_size"):
-                    msg_type = f"{msg_type} ({msg['media_size']})"
-                
-                content = msg.get("text") or "[media only]"
-                
-                table.add_row(
-                    str(msg["id"]),
-                    msg.get("date", "?")[:19] if msg.get("date") else "?",
-                    msg_type,
-                    content[:50] + "..." if len(content) > 50 else content
-                )
-            
-            console.print(table)
-            
-        except Exception as e:
-            print_error(f"Preview failed: {e}")
-            raise click.Abort()
+        console.print()
+        
+        if dry_run:
+            print_success(f"Would forward {success_count} message(s)")
+        else:
+            print_success(f"Forwarded {success_count}/{len(messages_to_forward)} message(s)")
+            if fail_count > 0:
+                print_warning(f"{fail_count} message(s) failed")

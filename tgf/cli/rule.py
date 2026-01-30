@@ -63,6 +63,12 @@ def rule():
     help='Sync interval in minutes (default: 30)'
 )
 @click.option(
+    '-f', '--filter',
+    'filter_str',
+    default=None,
+    help='Filter patterns (e.g. "广告;推广;!重要")'
+)
+@click.option(
     '--note',
     default=None,
     help='Optional note/description'
@@ -81,6 +87,7 @@ async def add_rule(
     target: str,
     mode: str,
     interval: int,
+    filter_str: str,
     note: str,
     disabled: bool
 ):
@@ -91,7 +98,10 @@ async def add_rule(
     Examples:
       tgf rule add --name news -s @telegram -t me
       tgf rule add --name media -s @channel -t @mychannel --interval 60
+      tgf rule add --name filtered -s @ch -t me --filter "广告;推广"
     """
+    from tgf.utils.filter import parse_filter_string
+    
     config = ctx.obj["config"]
     
     db = Database(config.db_path)
@@ -104,6 +114,12 @@ async def add_rule(
             print_error(f"Rule '{name}' already exists")
             raise click.Abort()
         
+        # Parse filter string to JSON
+        filters_json = None
+        if filter_str:
+            filter_config = parse_filter_string(filter_str)
+            filters_json = filter_config.to_json()
+        
         # Create rule
         rule_id = await db.create_rule(
             name=name,
@@ -112,6 +128,7 @@ async def add_rule(
             mode=mode,
             interval_min=interval,
             enabled=not disabled,
+            filters=filters_json,
             note=note
         )
         
@@ -121,6 +138,8 @@ async def add_rule(
         console.print(f"  Target:   {format_chat(target)}")
         console.print(f"  Mode:     {mode}")
         console.print(f"  Interval: {interval} min")
+        if filter_str:
+            console.print(f"  Filter:   {filter_str}")
         if note:
             console.print(f"  Note:     {note}")
         

@@ -15,7 +15,7 @@ from datetime import datetime
 class Database:
     """SQLite database manager for TGF"""
     
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2   # Bumped for filters support
     
     def __init__(self, db_path: Path):
         self.db_path = db_path
@@ -53,6 +53,7 @@ class Database:
                     mode            TEXT DEFAULT 'clone',
                     interval_min    INTEGER DEFAULT 30,
                     enabled         INTEGER DEFAULT 1,
+                    filters         TEXT,
                     note            TEXT,
                     created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
                     updated_at      TEXT DEFAULT CURRENT_TIMESTAMP
@@ -74,6 +75,20 @@ class Database:
                 )
             """)
             
+            # Create global_filters table
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS global_filters (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pattern         TEXT NOT NULL,
+                    action          TEXT DEFAULT 'exclude',
+                    type            TEXT DEFAULT 'contains',
+                    case_sensitive  INTEGER DEFAULT 0,
+                    enabled         INTEGER DEFAULT 1,
+                    name            TEXT,
+                    created_at      TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             # Create indexes
             await cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_rules_enabled ON rules(enabled)
@@ -81,6 +96,15 @@ class Database:
             await cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_state_rule_ns ON state(rule_id, namespace)
             """)
+            await cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_global_filters_enabled ON global_filters(enabled)
+            """)
+            
+            # Migration: Add filters column if not exists
+            try:
+                await cursor.execute("ALTER TABLE rules ADD COLUMN filters TEXT")
+            except Exception:
+                pass  # Column already exists
             
             # Create schema version table
             await cursor.execute("""
@@ -108,14 +132,15 @@ class Database:
         mode: str = "clone",
         interval_min: int = 30,
         enabled: bool = True,
+        filters: Optional[str] = None,
         note: Optional[str] = None
     ) -> int:
         """Create a new forwarding rule"""
         async with self._connection.cursor() as cursor:
             await cursor.execute("""
-                INSERT INTO rules (name, source_chat, target_chat, mode, interval_min, enabled, note)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (name, source_chat, target_chat, mode, interval_min, int(enabled), note))
+                INSERT INTO rules (name, source_chat, target_chat, mode, interval_min, enabled, filters, note)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (name, source_chat, target_chat, mode, interval_min, int(enabled), filters, note))
             await self._connection.commit()
             return cursor.lastrowid
     
@@ -152,7 +177,7 @@ class Database:
         set_parts = []
         values = []
         
-        allowed_fields = {"name", "source_chat", "target_chat", "mode", "interval_min", "enabled", "note"}
+        allowed_fields = {"name", "source_chat", "target_chat", "mode", "interval_min", "enabled", "filters", "note"}
         for key, value in kwargs.items():
             if key in allowed_fields:
                 set_parts.append(f"{key} = ?")
@@ -269,6 +294,72 @@ class Database:
             
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
+    
+    # ============ Global Filter CRUD Operations ============
+    
+    async def add_global_filter(
+        self,
+        pattern: str,
+        action: str = "exclude",
+        filter_type: str = "contains",
+        case_sensitive: bool = False,
+        enabled: bool = True,
+        name: Optional[str] = None
+    ) -> int:
+        """Add a global filter"""
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("""
+                INSERT INTO global_filters (pattern, action, type, case_sensitive, enabled, name)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (pattern, action, filter_type, int(case_sensitive), int(enabled), name))
+            await self._connection.commit()
+            return cursor.lastrowid
+    
+    async def get_global_filters(self, enabled_only: bool = True) -> List[Dict[str, Any]]:
+        """Get all global filters"""
+        async with self._connection.cursor() as cursor:
+            if enabled_only:
+                await cursor.execute("SELECT * FROM global_filters WHERE enabled = 1 ORDER BY id")
+            else:
+                await cursor.execute("SELECT * FROM global_filters ORDER BY id")
+            
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+    
+    async def update_global_filter(self, filter_id: int, **kwargs) -> bool:
+        """Update a global filter"""
+        if not kwargs:
+            return False
+        
+        set_parts = []
+        values = []
+        
+        allowed_fields = {"pattern", "action", "type", "case_sensitive", "enabled", "name"}
+        for key, value in kwargs.items():
+            if key in allowed_fields:
+                set_parts.append(f"{key} = ?")
+                if key in ("case_sensitive", "enabled"):
+                    values.append(int(value))
+                else:
+                    values.append(value)
+        
+        if not set_parts:
+            return False
+        
+        values.append(filter_id)
+        query = f"UPDATE global_filters SET {', '.join(set_parts)} WHERE id = ?"
+        
+        async with self._connection.cursor() as cursor:
+            await cursor.execute(query, values)
+            await self._connection.commit()
+            return cursor.rowcount > 0
+    
+    async def delete_global_filter(self, filter_id: int) -> bool:
+        """Delete a global filter"""
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("DELETE FROM global_filters WHERE id = ?", (filter_id,))
+            await self._connection.commit()
+            return cursor.rowcount > 0
 
 
 # Synchronous wrapper for simple operations

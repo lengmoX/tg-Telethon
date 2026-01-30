@@ -77,6 +77,8 @@ from tgf.cli.forward import forward
 from tgf.cli.rule import rule
 from tgf.cli.watch import watch, status
 from tgf.cli.chat import chat
+from tgf.cli.filter import filter
+from tgf.cli.backup import backup
 
 cli.add_command(login)
 cli.add_command(logout)
@@ -85,6 +87,8 @@ cli.add_command(rule)
 cli.add_command(watch)
 cli.add_command(status)
 cli.add_command(chat)
+cli.add_command(filter)
+cli.add_command(backup)
 
 
 @cli.command()
