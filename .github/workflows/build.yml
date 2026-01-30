@@ -9,26 +9,26 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ ubuntu-latest, windows-latest ]
-
+        os: [ubuntu-latest, windows-latest]
+    
     runs-on: ${{ matrix.os }}
-
+    
     steps:
       - uses: actions/checkout@v4
-
+      
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
+      
       - name: Install dependencies
         run: |
           pip install -e .
           pip install pyinstaller
-
+      
       - name: Build
         run: python build.py --onefile
-
+      
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
