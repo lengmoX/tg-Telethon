@@ -1,0 +1,220 @@
+{
+  "chat": {
+    "id": 3501954632,
+    "name": "小小班转发",
+    "username": null
+  },
+  "exported_at": "2026-01-30T19:28:36.216966",
+  "message_count": 14,
+  "messages": [
+    {
+      "id": 15,
+      "date": "2026-01-29T17:30:36+00:00",
+      "from_id": -1003501954632,
+      "reply_to": null,
+      "grouped_id": 14157662691534561,
+      "media": {
+        "type": "video",
+        "size": 186854849,
+        "filename": "IMG_2459.mp4",
+        "mime_type": "video/mp4",
+        "dimensions": {
+          "width": 1,
+          "height": 1
+        }
+      }
+    },
+    {
+      "id": 14,
+      "date": "2026-01-29T17:30:36+00:00",
+      "from_id": -1003501954632,
+      "reply_to": null,
+      "grouped_id": 14157662691534561,
+      "media": {
+        "type": "video",
+        "size": 319838812,
+        "filename": "IMG_2519.mp4",
+        "mime_type": "video/mp4",
+        "dimensions": {
+          "width": 1,
+          "height": 1
+        }
+      }
+    },
+    {
+      "id": 13,
+      "date": "2026-01-29T16:42:28+00:00",
+      "from_id": -1003501954632,
+      "reply_to": null,
+      "grouped_id": 14157639589165769,
+      "media": {
+        "type": "photo",
+        "size": 60794,
+        "filename": null,
+        "mime_type": "image/jpeg",
+        "dimensions": {
+          "width": 800,
+          "height": 600
+        }
+      }
+    },
+    {
+      "id": 12,
+      "date": "2026-01-29T16:42:28+00:00",
+      "from_id": -1003501954632,
+      "reply_to": null,
+      "grouped_id": 14157639589165769,
+      "media": {
+        "type": "photo",
+        "size": 58266,
+        "filename": null,
+        "mime_type": "image/jpeg",
+        "dimensions": {
+          "width": 800,
+          "height": 600
+        }
+      }
+    },
+    {
+      "id": 11,
+      "date": "2026-01-29T16:42:28+00:00",
+      "from_id": -1003501954632,
+      "reply_to": null,
+      "grouped_id": 14157639589165769,
+      "media": {
+        "type": "photo",
+        "size": 53885,
+        "filename": null,
+        "mime_type": "image/jpeg",
+        "dimensions": {
+          "width": 800,
+          "height": 600
+        }
+      }
+    },
+    {
+      "id": 10,
+      "date": "2026-01-29T16:42:28+00:00",
+      "from_id": -1003501954632,
+      "reply_to": null,
+      "grouped_id": 14157639589165769,
+      "media": {
+        "type": "photo",
+        "size": 59391,
+        "filename": null,
+        "mime_type": "image/jpeg",
+        "dimensions": {
+          "width": 800,
+          "height": 600
+        }
+      }
+    },
+    {
+      "id": 9,
+      "date": "2026-01-29T16:42:20+00:00",
+      "from_id": -1003501954632,
+      "reply_to": null,
+      "grouped_id": null
+    },
+    {
+      "id": 8,
+      "date": "2026-01-29T16:42:13+00:00",
+      "from_id": -1003501954632,
+      "reply_to": null,
+      "grouped_id": 14157639465896249,
+      "media": {
+        "type": "photo",
+        "size": 55202,
+        "filename": null,
+        "mime_type": "image/jpeg",
+        "dimensions": {
+          "width": 800,
+          "height": 600
+        }
+      }
+    },
+    {
+      "id": 7,
+      "date": "2026-01-29T16:42:13+00:00",
+      "from_id": -1003501954632,
+      "reply_to": null,
+      "grouped_id": 14157639465896249,
+      "media": {
+        "type": "photo",
+        "size": 59276,
+        "filename": null,
+        "mime_type": "image/jpeg",
+        "dimensions": {
+          "width": 800,
+          "height": 600
+        }
+      }
+    },
+    {
+      "id": 6,
+      "date": "2026-01-29T16:42:13+00:00",
+      "from_id": -1003501954632,
+      "reply_to": null,
+      "grouped_id": 14157639465896249,
+      "media": {
+        "type": "photo",
+        "size": 58024,
+        "filename": null,
+        "mime_type": "image/jpeg",
+        "dimensions": {
+          "width": 800,
+          "height": 600
+        }
+      }
+    },
+    {
+      "id": 5,
+      "date": "2026-01-29T16:42:13+00:00",
+      "from_id": -1003501954632,
+      "reply_to": null,
+      "grouped_id": 14157639465896249,
+      "media": {
+        "type": "photo",
+        "size": 62615,
+        "filename": null,
+        "mime_type": "image/jpeg",
+        "dimensions": {
+          "width": 800,
+          "height": 600
+        }
+      }
+    },
+    {
+      "id": 4,
+      "date": "2026-01-29T14:02:07+00:00",
+      "from_id": -1003501954632,
+      "reply_to": null,
+      "grouped_id": null,
+      "media": {
+        "type": "video",
+        "size": 661344821,
+        "filename": "IMG_6604.mp4",
+        "mime_type": "video/mp4",
+        "duration": 1073.9,
+        "dimensions": {
+          "width": 720,
+          "height": 1280
+        }
+      }
+    },
+    {
+      "id": 2,
+      "date": "2026-01-29T10:14:06+00:00",
+      "from_id": -1003501954632,
+      "reply_to": null,
+      "grouped_id": null
+    },
+    {
+      "id": 1,
+      "date": "2026-01-29T10:12:40+00:00",
+      "from_id": -1003501954632,
+      "reply_to": null,
+      "grouped_id": null
+    }
+  ]
+}

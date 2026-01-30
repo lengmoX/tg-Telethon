@@ -1,0 +1,37 @@
+[project]
+name = "tgf"
+version = "0.1.0"
+description = "Telegram Forwarder CLI - Forward messages between Telegram channels/groups"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "TGF Developer"}
+]
+keywords = ["telegram", "forwarder", "telethon", "cli"]
+
+dependencies = [
+    "telethon>=1.34.0",
+    "click>=8.0.0",
+    "rich>=13.0.0",
+    "aiosqlite>=0.19.0",
+    "qrcode>=7.4.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+]
+
+[project.scripts]
+tgf = "tgf.cli.main:cli"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tgf*"]
