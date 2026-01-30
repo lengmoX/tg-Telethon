@@ -28,8 +28,13 @@ COMMON_OPTIONS = [
     "--hidden-import=aiosqlite",
     "--hidden-import=click",
     "--hidden-import=rich",
+    "--hidden-import=rich._unicode_data",
     "--hidden-import=qrcode",
     "--hidden-import=dotenv",
+    "--hidden-import=python-dotenv",
+    
+    # Collect all data files from rich (for unicode tables)
+    "--collect-data=rich",
     
     # Exclude unnecessary modules to reduce size
     "--exclude-module=tkinter",
