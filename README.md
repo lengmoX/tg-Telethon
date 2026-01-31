@@ -10,6 +10,7 @@
 - **多账号支持** - 通过 `-n/--namespace` 管理多个账号
 - **消息过滤** - 关键词、正则表达式过滤
 - **定时监听** - 自动转发新消息
+- **媒体组转发** - 自动检测并转发整个相册/媒体组
 - **完整备份** - 一键导出/恢复所有数据
 - **便携模式** - 所有配置和数据存储在安装目录
 
@@ -85,39 +86,164 @@ tgf info
 ## 🚀 快速开始
 
 ```bash
-# 检查配置和登录状态
+# 1. 检查配置和登录状态
 tgf info
 
-# 登录（扫码）
+# 2. 登录（扫码）
 tgf login
 
-# 转发消息
+# 3. 转发消息
 tgf forward --from https://t.me/channel/123 --to me
-
-# 添加规则
-tgf rule add --name news -s @telegram -t me --interval 30
-
-# 监听模式
-tgf watch
-
-# 备份
-tgf backup export
 ```
 
 ---
 
-## 📋 命令参考
+## 📋 命令详解
+
+### `tgf forward` - 一次性转发
+
+转发指定的消息（支持媒体组自动检测）：
+
+```bash
+# 转发到 Saved Messages（默认）
+tgf forward --from https://t.me/channel/123
+
+# 转发到其他频道
+tgf forward --from https://t.me/channel/123 --to @mychannel
+
+# 转发多条消息
+tgf forward --from https://t.me/ch/1 --from https://t.me/ch/2
+
+# 从 JSON 文件转发
+tgf forward --from export.json --to me
+
+# 禁用媒体组检测（只转发单条消息）
+tgf forward --from https://t.me/channel/123 --no-group
+```
+
+---
+
+### `tgf rule` - 规则管理
+
+规则用于定义自动转发任务。
+
+```bash
+# 添加规则（从 @telegram 转发到 Saved Messages，每 30 秒检查一次）
+tgf rule add --name news -s @telegram -t me --interval 30
+
+# 添加带过滤器的规则（排除包含 "广告" 或 "推广" 的消息）
+tgf rule add --name filtered -s @channel -t me --filter "广告;推广"
+
+# 列出所有规则
+tgf rule list
+
+# 查看规则详情
+tgf rule show myname
+
+# 禁用规则
+tgf rule edit myname --disable
+
+# 启用规则
+tgf rule edit myname --enable
+
+# 修改检查间隔
+tgf rule edit myname --interval 60
+
+# 删除规则
+tgf rule remove myname
+```
+
+---
+
+### `tgf watch` - 监听模式 ⭐
+
+**这是主要的自动转发功能**。`watch` 命令会持续运行，按照规则定义的间隔检查新消息并自动转发。
+
+#### 基本用法
+
+```bash
+# 监听所有已启用的规则（持续运行，按 Ctrl+C 停止）
+tgf watch
+
+# 只监听指定规则
+tgf watch myname
+
+# 运行一次同步然后退出（不持续运行）
+tgf watch --once
+
+# 同步指定规则一次
+tgf watch myname --once
+```
+
+#### 完整工作流程示例
+
+```bash
+# 1. 登录
+tgf login
+
+# 2. 创建规则：从 @telegram 转发到 Saved Messages，每 60 秒检查一次
+tgf rule add --name telegram_news -s @telegram -t me --interval 60
+
+# 3. 查看规则状态
+tgf status
+
+# 4. 启动监听（会持续运行）
+tgf watch
+
+# 输出示例：
+# ✓ Watching all enabled rules
+# ✓ Press Ctrl+C to stop
+#
+# --- Sync cycle complete ---
+#   [telegram_news] 3 found, 3 forwarded
+#
+# --- Sync cycle complete ---
+#   [telegram_news] No new messages
+```
+
+#### 查看规则状态
+
+```bash
+tgf status           # 查看所有规则状态
+tgf status myname    # 查看指定规则状态
+
+# 输出包括：
+# - 规则名称
+# - 来源 → 目标
+# - 启用状态
+# - 最后消息 ID
+# - 已转发数量
+# - 最后同步时间
+```
+
+#### 后台运行（Linux）
+
+```bash
+# 使用 nohup 后台运行
+nohup tgf watch > /dev/null 2>&1 &
+
+# 使用 screen
+screen -S tgf
+tgf watch
+# 按 Ctrl+A+D 脱离
+
+# 使用 systemd（推荐）
+# 参见下方 systemd 配置
+```
+
+---
+
+### 其他命令
 
 | 命令 | 说明 |
 |------|------|
 | `tgf info` | 查看配置和登录状态 |
 | `tgf login` | 扫码登录 |
-| `tgf forward --from URL` | 转发消息 |
-| `tgf rule add/list/edit/remove` | 规则管理 |
-| `tgf filter add/list/remove` | 过滤器管理 |
-| `tgf backup export/import` | 备份恢复 |
-| `tgf watch` | 监听模式 |
 | `tgf chat ls` | 列出对话 |
+| `tgf chat export CHAT_ID` | 导出消息到 JSON |
+| `tgf filter add/list/remove` | 全局过滤器管理 |
+| `tgf backup export` | 导出所有数据 |
+| `tgf backup import FILE` | 恢复数据 |
 
 ---
 
@@ -135,6 +261,38 @@ tgf backup export
 ```bash
 export TGF_DATA_DIR=/custom/path
 tgf info
+```
+
+---
+
+## 🔧 Systemd 服务配置（Linux）
+
+创建服务文件 `/etc/systemd/system/tgf.service`：
+
+```ini
+[Unit]
+Description=TGF Telegram Forwarder
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/tgf
+ExecStart=/opt/tgf/tgf watch
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启用服务：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable tgf
+sudo systemctl start tgf
+sudo systemctl status tgf
 ```
 
 ---
@@ -158,6 +316,18 @@ sudo bash install.sh update
 tgf -n account1 login
 tgf -n account2 login
 tgf -n account1 watch
+```
+
+### 转发限制频道的内容
+
+程序会自动检测受限频道，下载后重新上传。视频、图片等媒体会保留原始格式和属性。
+
+### 媒体组（相册）如何转发？
+
+程序默认自动检测媒体组并整体转发。如需禁用，使用 `--no-group`：
+
+```bash
+tgf forward --from https://t.me/channel/123 --no-group
 ```
 
 ---
