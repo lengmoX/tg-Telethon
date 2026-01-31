@@ -162,17 +162,23 @@ tgf rule remove myname
 #### 基本用法
 
 ```bash
-# 监听所有已启用的规则（持续运行，按 Ctrl+C 停止）
+# 前台运行（按 Ctrl+C 停止）
 tgf watch
+
+# 后台运行（推荐）
+tgf watch -d
+
+# 查看监听状态
+tgf watch status
+
+# 停止后台监听
+tgf watch stop
 
 # 只监听指定规则
 tgf watch myname
 
-# 运行一次同步然后退出（不持续运行）
+# 运行一次同步然后退出
 tgf watch --once
-
-# 同步指定规则一次
-tgf watch myname --once
 ```
 
 #### 完整工作流程示例

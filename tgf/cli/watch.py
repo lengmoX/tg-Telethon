@@ -1,11 +1,15 @@
 """
 TGF Watch Command
 
-Scheduled monitoring and syncing.
+Scheduled monitoring and syncing with daemon support.
 """
 
+import os
+import sys
 import signal
+import subprocess
 import click
+from pathlib import Path
 
 from rich.live import Live
 from rich.table import Table
@@ -14,7 +18,7 @@ from rich.panel import Panel
 from tgf.cli.utils import (
     console, async_command, require_login,
     print_success, print_error, print_info, print_warning,
-    create_table, format_chat
+    create_table, format_chat, confirm_action
 )
 from tgf.service.watch_service import WatchService, SyncResult
 from tgf.data.database import Database
@@ -22,17 +26,66 @@ from tgf.data.models import Rule, State
 from tgf.data.config import get_config
 
 
-@click.command()
+def get_pid_file(config) -> Path:
+    """Get path to PID file"""
+    return config.data_dir / "tgf-watch.pid"
+
+
+def get_log_file(config) -> Path:
+    """Get path to daemon log file"""
+    return config.logs_dir / "watch.log"
+
+
+def is_process_running(pid: int) -> bool:
+    """Check if a process with given PID is running"""
+    try:
+        os.kill(pid, 0)
+        return True
+    except (OSError, ProcessLookupError):
+        return False
+
+
+def read_pid(config) -> int | None:
+    """Read PID from file"""
+    pid_file = get_pid_file(config)
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text().strip())
+            if is_process_running(pid):
+                return pid
+            # Clean up stale PID file
+            pid_file.unlink()
+        except (ValueError, OSError):
+            pass
+    return None
+
+
+def write_pid(config, pid: int):
+    """Write PID to file"""
+    get_pid_file(config).write_text(str(pid))
+
+
+def remove_pid(config):
+    """Remove PID file"""
+    pid_file = get_pid_file(config)
+    if pid_file.exists():
+        pid_file.unlink()
+
+
+@click.group(invoke_without_command=True)
 @click.argument('rule_name', required=False, default=None)
 @click.option(
     '--once',
     is_flag=True,
     help='Run sync once and exit'
 )
+@click.option(
+    '-d', '--daemon',
+    is_flag=True,
+    help='Run in background (daemon mode)'
+)
 @click.pass_context
-@async_command
-@require_login
-async def watch(ctx, rule_name: str, once: bool):
+def watch(ctx, rule_name: str, once: bool, daemon: bool):
     """
     Start watching and syncing rules
     
@@ -42,12 +95,98 @@ async def watch(ctx, rule_name: str, once: bool):
     
     \b
     Examples:
-      tgf watch             # Watch all enabled rules
+      tgf watch             # Watch all enabled rules (foreground)
+      tgf watch -d          # Watch in background (daemon mode)
+      tgf watch stop        # Stop background watcher
+      tgf watch status      # Check if watcher is running
       tgf watch myname      # Watch specific rule
       tgf watch --once      # Sync all once and exit
     """
+    # If subcommand is invoked, don't run default
+    if ctx.invoked_subcommand is not None:
+        return
+    
+    # Run the actual watch
+    ctx.invoke(_watch_run, rule_name=rule_name, once=once, daemon=daemon)
+
+
+@watch.command('start')
+@click.argument('rule_name', required=False, default=None)
+@click.pass_context
+def watch_start(ctx, rule_name: str):
+    """Start watching in background (daemon mode)"""
+    ctx.invoke(_watch_run, rule_name=rule_name, once=False, daemon=True)
+
+
+@watch.command('stop')
+@click.pass_context
+def watch_stop(ctx):
+    """Stop the background watcher"""
+    config = get_config()
+    
+    pid = read_pid(config)
+    if pid is None:
+        print_warning("Watcher is not running")
+        return
+    
+    try:
+        if sys.platform == 'win32':
+            # Windows: use taskkill
+            subprocess.run(['taskkill', '/F', '/PID', str(pid)], 
+                         capture_output=True)
+        else:
+            # Unix: send SIGTERM
+            os.kill(pid, signal.SIGTERM)
+        
+        remove_pid(config)
+        print_success(f"Watcher stopped (PID: {pid})")
+    except Exception as e:
+        print_error(f"Failed to stop watcher: {e}")
+
+
+@watch.command('status')
+@click.pass_context
+def watch_status(ctx):
+    """Check if watcher is running"""
+    config = get_config()
+    
+    pid = read_pid(config)
+    if pid:
+        print_success(f"Watcher is running (PID: {pid})")
+        
+        # Show log file location
+        log_file = get_log_file(config)
+        if log_file.exists():
+            console.print(f"  Log file: {log_file}")
+    else:
+        print_info("Watcher is not running")
+        console.print("  Start with: tgf watch -d")
+
+
+@click.command('_watch_run', hidden=True)
+@click.argument('rule_name', required=False, default=None)
+@click.option('--once', is_flag=True)
+@click.option('-d', '--daemon', is_flag=True)
+@click.pass_context
+@async_command
+@require_login
+async def _watch_run(ctx, rule_name: str, once: bool, daemon: bool):
+    """Internal command to run watch"""
     config = ctx.obj["config"]
     namespace = ctx.obj["namespace"]
+    
+    # Daemon mode
+    if daemon:
+        # Check if already running
+        existing_pid = read_pid(config)
+        if existing_pid:
+            print_warning(f"Watcher already running (PID: {existing_pid})")
+            print_info("Use 'tgf watch stop' to stop it first")
+            return
+        
+        # Start daemon process
+        _start_daemon(config, namespace, rule_name)
+        return
     
     async with WatchService(config, namespace) as service:
         if once:
@@ -104,6 +243,58 @@ async def watch(ctx, rule_name: str, once: bool):
         print_success("Watch stopped")
 
 
+def _start_daemon(config, namespace: str, rule_name: str | None):
+    """Start watch as a background daemon process"""
+    import sys
+    
+    # Build command
+    cmd = [sys.executable, '-m', 'tgf', '-n', namespace, 'watch']
+    if rule_name:
+        cmd.append(rule_name)
+    
+    # Log file
+    log_file = get_log_file(config)
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    if sys.platform == 'win32':
+        # Windows: use subprocess with DETACHED_PROCESS
+        DETACHED_PROCESS = 0x00000008
+        CREATE_NO_WINDOW = 0x08000000
+        
+        with open(log_file, 'a') as log:
+            process = subprocess.Popen(
+                cmd,
+                stdout=log,
+                stderr=log,
+                stdin=subprocess.DEVNULL,
+                creationflags=DETACHED_PROCESS | CREATE_NO_WINDOW,
+                cwd=config.data_dir
+            )
+        pid = process.pid
+    else:
+        # Unix: use nohup-style background
+        with open(log_file, 'a') as log:
+            process = subprocess.Popen(
+                cmd,
+                stdout=log,
+                stderr=log,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+                cwd=config.data_dir
+            )
+        pid = process.pid
+    
+    # Save PID
+    write_pid(config, pid)
+    
+    print_success(f"Watcher started in background (PID: {pid})")
+    console.print(f"  Log file: {log_file}")
+    console.print()
+    console.print("  [dim]Check status:[/dim] tgf watch status")
+    console.print("  [dim]Stop watcher:[/dim]  tgf watch stop")
+    console.print("  [dim]View logs:[/dim]     tail -f " + str(log_file))
+
+
 @click.command()
 @click.argument('rule_name', required=False, default=None)
 @click.pass_context
@@ -136,6 +327,14 @@ async def status(ctx, rule_name: str):
         if not rules:
             print_info("No rules found")
             return
+        
+        # Check if watcher is running
+        pid = read_pid(config)
+        if pid:
+            console.print(f"[green]● Watcher running[/green] (PID: {pid})")
+        else:
+            console.print("[dim]○ Watcher not running[/dim]")
+        console.print()
         
         table = create_table(
             f"Rule Status (namespace: {namespace})",
