@@ -3,10 +3,17 @@
 # TGF 安装脚本
 # 适用于 Debian/Ubuntu/CentOS 等 Linux 系统
 #
+# 便携安装模式：程序和配置都在安装目录下
+# 全局命令 tgf 通过符号链接实现
+#
 # 使用方法:
-#   wget -qO install.sh https://raw.githubusercontent.com/lengmoX/tg-Telethon/master/install.sh && bash install.sh
-#   或直接下载后运行:
-#   bash install.sh
+#   # 安装到 /opt/tgf（推荐）
+#   mkdir -p /opt/tgf && cd /opt/tgf
+#   wget -qO- https://raw.githubusercontent.com/lengmoX/tg-Telethon/master/install.sh | sudo bash -s install
+#
+#   # 或下载后运行
+#   wget -O install.sh https://raw.githubusercontent.com/lengmoX/tg-Telethon/master/install.sh
+#   sudo bash install.sh install
 #
 
 set -e
@@ -21,13 +28,11 @@ NC='\033[0m' # No Color
 
 # 配置
 GITHUB_REPO="lengmoX/tg-Telethon"
-INSTALL_DIR="/usr/local/bin"
-TGF_BIN="$INSTALL_DIR/tgf"
+GLOBAL_BIN="/usr/local/bin/tgf"
 
-# 获取实际用户（即使用 sudo 运行）
-REAL_USER="${SUDO_USER:-$USER}"
-REAL_HOME=$(eval echo "~$REAL_USER")
-TGF_DATA_DIR="$REAL_HOME/.tgf"
+# 安装目录 = 当前目录
+INSTALL_DIR="$(pwd)"
+TGF_BIN="$INSTALL_DIR/tgf"
 
 # 打印函数
 print_info() {
@@ -50,7 +55,7 @@ print_warning() {
 check_root() {
     if [ "$EUID" -ne 0 ]; then
         print_error "请使用 sudo 或 root 用户运行此脚本"
-        print_info "例如: sudo bash install.sh"
+        print_info "例如: sudo bash install.sh install"
         exit 1
     fi
 }
@@ -65,7 +70,7 @@ check_dependencies() {
     
     if [ -n "$missing" ]; then
         print_error "缺少依赖:$missing"
-        print_info "请先安装: apt install$missing 或 yum install$missing"
+        print_info "请先安装: apt install$missing"
         exit 1
     fi
 }
@@ -90,6 +95,7 @@ get_current_version() {
 install_tgf() {
     check_dependencies
     
+    print_info "安装目录: $INSTALL_DIR"
     print_info "正在获取最新版本..."
     
     local version
@@ -107,57 +113,58 @@ install_tgf() {
     
     print_info "正在下载..."
     
-    # 创建临时目录
-    local tmp_dir
-    tmp_dir=$(mktemp -d)
-    local tmp_file="$tmp_dir/tgf"
-    
-    # 下载
-    if ! curl -fsSL -o "$tmp_file" "$download_url" 2>/dev/null; then
+    # 下载到当前目录
+    if ! curl -fsSL -o "$TGF_BIN" "$download_url" 2>/dev/null; then
         print_error "下载失败"
         echo ""
-        print_info "可能的原因:"
-        print_info "  1. 版本 $version 尚未发布可执行文件"
-        print_info "  2. 网络连接问题"
-        echo ""
         print_info "手动下载地址: https://github.com/$GITHUB_REPO/releases"
-        print_info "手动安装命令: cp tgf-linux /usr/local/bin/tgf && chmod +x /usr/local/bin/tgf"
-        rm -rf "$tmp_dir"
         exit 1
     fi
     
     # 验证下载的文件
-    if [ ! -s "$tmp_file" ]; then
+    if [ ! -s "$TGF_BIN" ]; then
         print_error "下载的文件为空"
-        rm -rf "$tmp_dir"
         exit 1
     fi
     
-    # 安装
-    chmod +x "$tmp_file"
-    mv "$tmp_file" "$TGF_BIN"
+    # 设置权限
+    chmod +x "$TGF_BIN"
     
-    # 清理
-    rm -rf "$tmp_dir"
+    # 创建全局符号链接
+    if [ -L "$GLOBAL_BIN" ]; then
+        rm -f "$GLOBAL_BIN"
+    elif [ -f "$GLOBAL_BIN" ]; then
+        print_warning "已存在全局 tgf 命令，将覆盖"
+        rm -f "$GLOBAL_BIN"
+    fi
+    ln -s "$TGF_BIN" "$GLOBAL_BIN"
     
-    # 创建数据目录（使用实际用户权限）
-    if [ -n "$SUDO_USER" ]; then
-        sudo -u "$SUDO_USER" mkdir -p "$TGF_DATA_DIR"
-    else
-        mkdir -p "$TGF_DATA_DIR"
+    # 创建子目录
+    mkdir -p "$INSTALL_DIR/sessions"
+    mkdir -p "$INSTALL_DIR/logs"
+    
+    # 如果 .env 不存在，创建模板
+    if [ ! -f "$INSTALL_DIR/.env" ]; then
+        cat > "$INSTALL_DIR/.env" << 'EOF'
+# TGF 配置文件
+# 从 https://my.telegram.org 获取 API 凭证
+
+TGF_API_ID=你的API_ID
+TGF_API_HASH=你的API_HASH
+EOF
+        print_info "已创建配置模板: $INSTALL_DIR/.env"
     fi
     
     echo ""
     print_success "TGF 安装成功!"
     echo ""
-    echo -e "  ${CYAN}安装位置${NC}: $TGF_BIN"
-    echo -e "  ${CYAN}数据目录${NC}: $TGF_DATA_DIR"
+    echo -e "  ${CYAN}安装目录${NC}: $INSTALL_DIR"
+    echo -e "  ${CYAN}可执行文件${NC}: $TGF_BIN"
+    echo -e "  ${CYAN}全局命令${NC}: $GLOBAL_BIN -> $TGF_BIN"
     echo ""
     echo -e "${YELLOW}下一步:${NC}"
-    echo "  1. 创建配置文件: $TGF_DATA_DIR/.env"
-    echo "     内容:"
-    echo "       TGF_API_ID=你的API_ID"
-    echo "       TGF_API_HASH=你的API_HASH"
+    echo "  1. 编辑配置文件: nano $INSTALL_DIR/.env"
+    echo "     填入你的 API_ID 和 API_HASH"
     echo ""
     echo "  2. 登录: tgf login"
     echo ""
@@ -167,7 +174,8 @@ install_tgf() {
 # 更新
 update_tgf() {
     if [ ! -f "$TGF_BIN" ]; then
-        print_error "TGF 未安装，请先安装"
+        print_error "TGF 未安装在当前目录"
+        print_info "请先 cd 到安装目录后再运行"
         exit 1
     fi
     
@@ -191,7 +199,18 @@ update_tgf() {
     fi
     
     print_info "正在更新..."
-    install_tgf
+    
+    # 下载新版本
+    local download_url="https://github.com/$GITHUB_REPO/releases/download/$latest/tgf-linux"
+    if ! curl -fsSL -o "$TGF_BIN.new" "$download_url" 2>/dev/null; then
+        print_error "下载失败"
+        exit 1
+    fi
+    
+    chmod +x "$TGF_BIN.new"
+    mv "$TGF_BIN.new" "$TGF_BIN"
+    
+    print_success "更新完成!"
 }
 
 # 卸载
@@ -199,25 +218,30 @@ uninstall_tgf() {
     print_warning "即将卸载 TGF..."
     echo ""
     
+    # 删除全局符号链接
+    if [ -L "$GLOBAL_BIN" ]; then
+        rm -f "$GLOBAL_BIN"
+        print_success "已删除全局命令: $GLOBAL_BIN"
+    fi
+    
     # 删除可执行文件
     if [ -f "$TGF_BIN" ]; then
         rm -f "$TGF_BIN"
         print_success "已删除: $TGF_BIN"
-    else
-        print_info "可执行文件不存在"
     fi
     
     # 询问是否删除数据
     echo ""
-    if [ -d "$TGF_DATA_DIR" ]; then
-        echo -n "是否删除数据目录 $TGF_DATA_DIR? [y/N] "
-        read -r answer </dev/tty
-        if [[ "$answer" =~ ^[Yy]$ ]]; then
-            rm -rf "$TGF_DATA_DIR"
-            print_success "已删除数据目录"
-        else
-            print_info "保留数据目录"
-        fi
+    echo -n "是否删除所有数据 (sessions, logs, db)? [y/N] "
+    read -r answer </dev/tty
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+        rm -rf "$INSTALL_DIR/sessions"
+        rm -rf "$INSTALL_DIR/logs"
+        rm -f "$INSTALL_DIR/tgf.db"
+        rm -f "$INSTALL_DIR/.env"
+        print_success "已删除所有数据"
+    else
+        print_info "保留数据文件"
     fi
     
     echo ""
@@ -232,6 +256,7 @@ show_menu() {
     echo -e "${CYAN}║${NC}     ${BLUE}TGF - Telegram Forwarder 安装器${NC}        ${CYAN}║${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════════╝${NC}"
     echo ""
+    echo -e "  安装目录: ${GREEN}$INSTALL_DIR${NC}"
     echo -e "  当前状态: ${GREEN}$(get_current_version)${NC}"
     echo ""
     echo "  1) 安装 TGF"
@@ -285,22 +310,27 @@ interactive_menu() {
 
 # 显示帮助
 show_help() {
-    echo "TGF 安装脚本"
+    echo "TGF 安装脚本 - 便携安装模式"
     echo ""
-    echo "用法: bash $0 [command]"
+    echo "用法: sudo bash $0 [command]"
     echo ""
     echo "命令:"
-    echo "  install    直接安装 TGF"
-    echo "  update     更新 TGF"
-    echo "  uninstall  卸载 TGF"
+    echo "  install    安装到当前目录"
+    echo "  update     更新当前目录的 TGF"
+    echo "  uninstall  卸载"
     echo "  menu       显示交互式菜单"
     echo ""
-    echo "如果不带参数运行，将显示交互式菜单"
+    echo "示例:"
+    echo "  # 安装到 /opt/tgf"
+    echo "  mkdir -p /opt/tgf && cd /opt/tgf"
+    echo "  sudo bash install.sh install"
+    echo ""
+    echo "  # 一键安装"
+    echo "  mkdir -p /opt/tgf && cd /opt/tgf && wget -qO- https://raw.githubusercontent.com/lengmoX/tg-Telethon/master/install.sh | sudo bash -s install"
 }
 
 # 主函数
 main() {
-    # 如果有参数，使用非交互模式
     case "${1:-}" in
         install)
             check_root
@@ -321,7 +351,6 @@ main() {
             show_help
             ;;
         "")
-            # 无参数时显示交互式菜单
             interactive_menu
             ;;
         *)

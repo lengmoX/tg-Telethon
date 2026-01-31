@@ -6,6 +6,11 @@ Handles:
 - API credentials
 - Environment variables
 - .env file loading
+
+Portable Mode:
+- Windows: data stored in same directory as tgf.exe
+- Linux (installed): data stored in installation directory (e.g., /opt/tgf/)
+- Development: data stored in ~/.tgf/
 """
 
 import os
@@ -24,19 +29,31 @@ except ImportError:
 
 def get_app_dir() -> Path:
     """
-    Get the application directory.
+    Get the application data directory.
     
-    When frozen (PyInstaller): directory containing the executable
-    When running as script: ~/.tgf
+    Priority:
+    1. TGF_DATA_DIR environment variable (explicit override)
+    2. For frozen builds: same directory as executable
+    3. For development: ~/.tgf/
     """
+    # 1. Check environment variable first
+    if env_data_dir := os.environ.get("TGF_DATA_DIR"):
+        return Path(env_data_dir)
+    
+    # 2. Check for frozen build (PyInstaller)
     if getattr(sys, 'frozen', False):
-        # Running as compiled executable
         # Use executable's directory for portable mode
         exe_dir = Path(sys.executable).parent
-        return exe_dir / "tgf_data"
-    else:
-        # Running as script, use home directory
-        return Path.home() / ".tgf"
+        return exe_dir
+    
+    # 3. Check if running from an installed location with .env
+    # Look for .env in current working directory
+    cwd_env = Path.cwd() / ".env"
+    if cwd_env.exists():
+        return Path.cwd()
+    
+    # 4. Default to home directory
+    return Path.home() / ".tgf"
 
 
 @dataclass
@@ -79,8 +96,8 @@ class Config:
         
         # Search for .env file in multiple locations
         search_paths = [
-            Path.cwd() / ".env",                    # Current directory
-            self.data_dir / ".env",                 # Data directory
+            self.data_dir / ".env",             # Data directory
+            Path.cwd() / ".env",                 # Current directory
         ]
         
         # Add executable directory for frozen builds
@@ -98,7 +115,7 @@ class Config:
     
     def _load_from_env(self):
         """Load configuration from environment variables"""
-        # TGF_DATA_DIR
+        # TGF_DATA_DIR - already handled in get_app_dir()
         if env_data_dir := os.environ.get("TGF_DATA_DIR"):
             self.data_dir = Path(env_data_dir)
         
