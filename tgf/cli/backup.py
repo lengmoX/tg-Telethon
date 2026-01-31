@@ -1,7 +1,7 @@
 """
 TGF Backup and Migration Commands
 
-Export and import configuration, rules, and session data.
+Export and import all data including sessions.
 """
 
 import json
@@ -23,12 +23,12 @@ from tgf.data.config import get_config
 @click.group()
 def backup():
     """
-    Backup and restore data
+    Backup and restore all data
     
     \b
     Commands:
-      export   Export data to backup file
-      import   Import data from backup file
+      export   Export all data to backup file
+      import   Restore data from backup file
       list     List backup contents
     """
     pass
@@ -38,245 +38,226 @@ def backup():
 @click.option(
     '-o', '--output',
     default=None,
-    help='Output file path (default: <date>.backup.tgf.json)'
+    help='Output file path (default: tgf_backup_<date>.zip)'
 )
 @click.option(
-    '--include-sessions',
+    '--no-sessions',
     is_flag=True,
-    help='Include session files (creates .zip archive)'
+    help='Exclude session files (login info)'
 )
 @click.option(
-    '--rules-only',
+    '--no-db',
     is_flag=True,
-    help='Export only rules, no states/filters'
+    help='Exclude database file'
 )
 @click.pass_context
 @async_command
-async def export_backup(ctx, output: str, include_sessions: bool, rules_only: bool):
+async def export_backup(ctx, output: str, no_sessions: bool, no_db: bool):
     """
-    Export data to backup file
+    Export all data to backup file
+    
+    \b
+    Default exports:
+      - Session files (login credentials)
+      - Database (rules, filters, states)
+      - .env file (if exists)
     
     \b
     Examples:
-      tgf backup export                       # Export to default file
-      tgf backup export -o mybackup.json      # Custom filename
-      tgf backup export --include-sessions    # Include session files (.zip)
+      tgf backup export                    # Full backup
+      tgf backup export -o my_backup.zip   # Custom filename
+      tgf backup export --no-sessions      # Without session files
     """
     config = ctx.obj["config"]
     
-    db = Database(config.db_path)
-    await db.connect()
+    # Determine output filename
+    if output is None:
+        date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output = f"tgf_backup_{date_str}.zip"
     
-    try:
-        # Build backup data
-        backup_data = {
-            "version": 1,
-            "created_at": datetime.now().isoformat(),
-            "tool": "tgf",
-        }
+    output_path = Path(output)
+    if not output_path.suffix == '.zip':
+        output_path = output_path.with_suffix('.zip')
+    
+    # Build metadata
+    metadata = {
+        "version": 2,
+        "created_at": datetime.now().isoformat(),
+        "tool": "tgf",
+        "namespace": config.namespace,
+        "contents": []
+    }
+    
+    console.print("\n[bold cyan]═══ TGF 备份 ═══[/bold cyan]\n")
+    
+    with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
         
-        # Export rules
-        rules = await db.get_all_rules(enabled_only=False)
-        backup_data["rules"] = rules
-        print_info(f"Exporting {len(rules)} rule(s)")
+        # 1. Export database
+        if not no_db and config.db_path.exists():
+            zf.write(config.db_path, "tgf.db")
+            metadata["contents"].append("database")
+            db_size = config.db_path.stat().st_size / 1024
+            print_info(f"数据库: tgf.db ({db_size:.1f} KB)")
         
-        if not rules_only:
-            # Export global filters
-            filters = await db.get_global_filters(enabled_only=False)
-            backup_data["global_filters"] = filters
-            print_info(f"Exporting {len(filters)} global filter(s)")
+        # 2. Export session files
+        if not no_sessions and config.sessions_dir.exists():
+            session_count = 0
+            for session_file in config.sessions_dir.glob("*.session"):
+                zf.write(session_file, f"sessions/{session_file.name}")
+                session_count += 1
             
-            # Export states for all namespaces
-            states = []
-            for rule in rules:
-                state = await db.get_state(rule['id'], config.namespace)
-                if state:
-                    states.append(state)
-            backup_data["states"] = states
-            print_info(f"Exporting {len(states)} state record(s)")
-        
-        # Determine output filename
-        if output is None:
-            date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-            if include_sessions:
-                output = f"{date_str}.backup.tgf.zip"
-            else:
-                output = f"{date_str}.backup.tgf.json"
-        
-        output_path = Path(output)
-        
-        if include_sessions:
-            # Create ZIP archive with data and sessions
-            if not output_path.suffix == '.zip':
-                output_path = output_path.with_suffix('.zip')
+            # Also include journal files if they exist
+            for journal_file in config.sessions_dir.glob("*.session-journal"):
+                zf.write(journal_file, f"sessions/{journal_file.name}")
             
-            with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-                # Add backup data
-                zf.writestr('backup.json', json.dumps(backup_data, ensure_ascii=False, indent=2))
-                
-                # Add session files
-                sessions_dir = config.sessions_dir
-                if sessions_dir.exists():
-                    session_count = 0
-                    for session_file in sessions_dir.glob("*.session"):
-                        zf.write(session_file, f"sessions/{session_file.name}")
-                        session_count += 1
-                    print_info(f"Including {session_count} session file(s)")
-            
-            print_success(f"Backup created: {output_path}")
-        else:
-            # Create JSON file only
-            with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(backup_data, f, ensure_ascii=False, indent=2)
-            
-            print_success(f"Backup created: {output_path}")
+            if session_count > 0:
+                metadata["contents"].append("sessions")
+                print_info(f"会话文件: {session_count} 个账号")
         
-        # Summary
-        console.print(f"\n[dim]Backup contents:[/dim]")
-        console.print(f"  Rules:   {len(rules)}")
-        if not rules_only:
-            console.print(f"  Filters: {len(backup_data.get('global_filters', []))}")
-            console.print(f"  States:  {len(backup_data.get('states', []))}")
+        # 3. Export .env file if exists
+        env_files = [
+            config.data_dir / ".env",
+            Path.cwd() / ".env",
+        ]
+        for env_file in env_files:
+            if env_file.exists():
+                zf.write(env_file, ".env")
+                metadata["contents"].append("env")
+                print_info(f"环境配置: .env")
+                break
         
-    finally:
-        await db.close()
+        # 4. Export logs (optional, just last log file)
+        if config.logs_dir.exists():
+            log_files = list(config.logs_dir.glob("*.log"))
+            if log_files:
+                latest_log = max(log_files, key=lambda p: p.stat().st_mtime)
+                zf.write(latest_log, f"logs/{latest_log.name}")
+                metadata["contents"].append("logs")
+        
+        # 5. Write metadata
+        zf.writestr('metadata.json', json.dumps(metadata, ensure_ascii=False, indent=2))
+    
+    # Summary
+    file_size = output_path.stat().st_size / 1024
+    
+    console.print()
+    print_success(f"备份完成: {output_path}")
+    console.print(f"  文件大小: {file_size:.1f} KB")
+    console.print(f"  包含内容: {', '.join(metadata['contents'])}")
+    console.print()
+    console.print("[dim]恢复命令: tgf backup import " + str(output_path) + "[/dim]")
 
 
 @backup.command('import')
 @click.argument('file', type=click.Path(exists=True))
 @click.option(
-    '--merge',
-    is_flag=True,
-    help='Merge with existing data (skip duplicates)'
-)
-@click.option(
     '--force',
     is_flag=True,
-    help='Overwrite existing rules with same name'
+    help='Overwrite existing files without asking'
 )
 @click.option(
-    '--include-sessions',
+    '--no-sessions',
     is_flag=True,
-    help='Restore session files from .zip backup'
+    help='Skip restoring session files'
+)
+@click.option(
+    '--no-db',
+    is_flag=True,
+    help='Skip restoring database'
 )
 @click.pass_context
 @async_command
-async def import_backup(ctx, file: str, merge: bool, force: bool, include_sessions: bool):
+async def import_backup(ctx, file: str, force: bool, no_sessions: bool, no_db: bool):
     """
-    Import data from backup file
+    Restore data from backup file
     
     \b
     Examples:
-      tgf backup import backup.json           # Import rules/filters
-      tgf backup import backup.zip --include-sessions  # With sessions
-      tgf backup import backup.json --merge   # Skip existing rules
-      tgf backup import backup.json --force   # Overwrite existing
+      tgf backup import backup.zip         # Full restore
+      tgf backup import backup.zip --force # Overwrite existing
+      tgf backup import backup.zip --no-sessions  # Without sessions
     """
     config = ctx.obj["config"]
     file_path = Path(file)
     
-    # Load backup data
-    if file_path.suffix == '.zip':
-        with zipfile.ZipFile(file_path, 'r') as zf:
-            backup_data = json.loads(zf.read('backup.json').decode('utf-8'))
-            
-            if include_sessions:
-                # Extract sessions
-                sessions_dir = config.sessions_dir
-                sessions_dir.mkdir(parents=True, exist_ok=True)
-                
-                session_files = [f for f in zf.namelist() if f.startswith('sessions/')]
-                for sf in session_files:
-                    zf.extract(sf, config.data_dir)
-                    # Move from sessions/ to correct location
-                    extracted = config.data_dir / sf
-                    target = sessions_dir / Path(sf).name
-                    if extracted != target:
-                        shutil.move(str(extracted), str(target))
-                
-                print_info(f"Restored {len(session_files)} session file(s)")
-    else:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            backup_data = json.load(f)
+    if not file_path.suffix == '.zip':
+        print_error("备份文件必须是 .zip 格式")
+        return
     
-    # Validate backup
-    if backup_data.get('tool') != 'tgf':
-        print_warning("This backup may not be from tgf, proceeding anyway...")
+    console.print("\n[bold cyan]═══ TGF 恢复 ═══[/bold cyan]\n")
     
-    print_info(f"Backup from: {backup_data.get('created_at', 'unknown')}")
-    
-    db = Database(config.db_path)
-    await db.connect()
-    
-    try:
-        rules_imported = 0
-        rules_skipped = 0
-        filters_imported = 0
+    with zipfile.ZipFile(file_path, 'r') as zf:
+        # Read metadata
+        try:
+            metadata = json.loads(zf.read('metadata.json').decode('utf-8'))
+            print_info(f"备份时间: {metadata.get('created_at', 'unknown')}")
+            print_info(f"备份内容: {', '.join(metadata.get('contents', []))}")
+        except KeyError:
+            # Legacy backup format
+            metadata = {"contents": []}
+            print_warning("旧版备份格式，尝试恢复...")
         
-        # Import rules
-        for rule_data in backup_data.get('rules', []):
-            name = rule_data.get('name')
-            if not name:
-                continue
-            
-            existing = await db.get_rule(name=name)
-            
-            if existing:
-                if force:
-                    # Update existing rule
-                    await db.update_rule(
-                        existing['id'],
-                        source_chat=rule_data.get('source_chat'),
-                        target_chat=rule_data.get('target_chat'),
-                        mode=rule_data.get('mode', 'clone'),
-                        interval_min=rule_data.get('interval_min', 30),
-                        enabled=rule_data.get('enabled', True),
-                        filters=rule_data.get('filters'),
-                        note=rule_data.get('note')
-                    )
-                    rules_imported += 1
-                elif merge:
-                    rules_skipped += 1
+        console.print()
+        
+        # 1. Restore database
+        if not no_db and 'tgf.db' in zf.namelist():
+            if config.db_path.exists() and not force:
+                if not click.confirm("数据库已存在，是否覆盖?"):
+                    print_info("跳过数据库")
                 else:
-                    print_warning(f"Rule '{name}' already exists (use --merge or --force)")
-                    rules_skipped += 1
+                    zf.extract('tgf.db', config.data_dir)
+                    print_success("已恢复: 数据库")
             else:
-                # Create new rule
-                await db.create_rule(
-                    name=name,
-                    source_chat=rule_data.get('source_chat', ''),
-                    target_chat=rule_data.get('target_chat', ''),
-                    mode=rule_data.get('mode', 'clone'),
-                    interval_min=rule_data.get('interval_min', 30),
-                    enabled=rule_data.get('enabled', True),
-                    filters=rule_data.get('filters'),
-                    note=rule_data.get('note')
-                )
-                rules_imported += 1
+                zf.extract('tgf.db', config.data_dir)
+                print_success("已恢复: 数据库")
         
-        # Import global filters
-        for filter_data in backup_data.get('global_filters', []):
-            pattern = filter_data.get('pattern')
-            if not pattern:
-                continue
+        # 2. Restore session files
+        if not no_sessions:
+            session_files = [f for f in zf.namelist() if f.startswith('sessions/') and not f.endswith('/')]
+            if session_files:
+                config.sessions_dir.mkdir(parents=True, exist_ok=True)
+                
+                for sf in session_files:
+                    target = config.sessions_dir / Path(sf).name
+                    
+                    if target.exists() and not force:
+                        if not click.confirm(f"会话 {Path(sf).name} 已存在，是否覆盖?"):
+                            continue
+                    
+                    # Extract to temp then move
+                    zf.extract(sf, config.data_dir)
+                    extracted = config.data_dir / sf
+                    shutil.move(str(extracted), str(target))
+                
+                # Clean up sessions directory from extraction
+                sessions_tmp = config.data_dir / "sessions"
+                if sessions_tmp.exists() and sessions_tmp != config.sessions_dir:
+                    shutil.rmtree(sessions_tmp, ignore_errors=True)
+                
+                print_success(f"已恢复: {len(session_files)} 个会话文件")
+        
+        # 3. Restore .env file
+        if '.env' in zf.namelist():
+            env_target = config.data_dir / ".env"
             
-            await db.add_global_filter(
-                pattern=pattern,
-                action=filter_data.get('action', 'exclude'),
-                filter_type=filter_data.get('type', 'contains'),
-                case_sensitive=filter_data.get('case_sensitive', False),
-                enabled=filter_data.get('enabled', True),
-                name=filter_data.get('name')
-            )
-            filters_imported += 1
+            if env_target.exists() and not force:
+                if click.confirm(".env 已存在，是否覆盖?"):
+                    zf.extract('.env', config.data_dir)
+                    print_success("已恢复: .env")
+            else:
+                zf.extract('.env', config.data_dir)
+                print_success("已恢复: .env")
         
-        print_success("Import complete!")
-        console.print(f"  Rules imported: {rules_imported}")
-        console.print(f"  Rules skipped:  {rules_skipped}")
-        console.print(f"  Filters added:  {filters_imported}")
-        
-    finally:
-        await db.close()
+        # 4. Restore logs (optional)
+        log_files = [f for f in zf.namelist() if f.startswith('logs/')]
+        if log_files:
+            config.logs_dir.mkdir(parents=True, exist_ok=True)
+            for lf in log_files:
+                zf.extract(lf, config.data_dir)
+    
+    console.print()
+    print_success("恢复完成!")
+    console.print("\n[dim]使用 'tgf rule list' 查看已恢复的规则[/dim]")
 
 
 @backup.command('list')
@@ -287,53 +268,53 @@ def list_backup(file: str):
     
     \b
     Examples:
-      tgf backup list mybackup.json
+      tgf backup list mybackup.zip
     """
     file_path = Path(file)
     
-    # Load backup data
-    if file_path.suffix == '.zip':
-        with zipfile.ZipFile(file_path, 'r') as zf:
-            backup_data = json.loads(zf.read('backup.json').decode('utf-8'))
-            session_files = [f for f in zf.namelist() if f.startswith('sessions/')]
-    else:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            backup_data = json.load(f)
-        session_files = []
+    if not file_path.suffix == '.zip':
+        print_error("备份文件必须是 .zip 格式")
+        return
     
-    console.print(f"\n[bold]Backup: {file_path.name}[/bold]")
-    console.print(f"  Created:  {backup_data.get('created_at', 'unknown')}")
-    console.print(f"  Version:  {backup_data.get('version', 1)}")
-    console.print()
+    console.print(f"\n[bold]备份文件: {file_path.name}[/bold]")
     
-    # Rules
-    rules = backup_data.get('rules', [])
-    console.print(f"[cyan]Rules ({len(rules)}):[/cyan]")
-    for r in rules[:10]:  # Show first 10
-        status = "●" if r.get('enabled') else "○"
-        console.print(f"  {status} {r.get('name')}: {r.get('source_chat')} → {r.get('target_chat')}")
-    if len(rules) > 10:
-        console.print(f"  ... and {len(rules) - 10} more")
-    
-    # Filters
-    filters = backup_data.get('global_filters', [])
-    if filters:
-        console.print(f"\n[cyan]Global Filters ({len(filters)}):[/cyan]")
-        for f in filters[:5]:
-            action = "排除" if f.get('action') == 'exclude' else "包含"
-            console.print(f"  {action}: {f.get('pattern')}")
-        if len(filters) > 5:
-            console.print(f"  ... and {len(filters) - 5} more")
-    
-    # Sessions
-    if session_files:
-        console.print(f"\n[cyan]Sessions ({len(session_files)}):[/cyan]")
-        for sf in session_files:
-            console.print(f"  {Path(sf).name}")
-    
-    # States
-    states = backup_data.get('states', [])
-    if states:
-        console.print(f"\n[cyan]States ({len(states)}):[/cyan]")
-        for s in states[:5]:
-            console.print(f"  Rule #{s.get('rule_id')}: last_msg_id={s.get('last_msg_id')}")
+    with zipfile.ZipFile(file_path, 'r') as zf:
+        # Read metadata
+        try:
+            metadata = json.loads(zf.read('metadata.json').decode('utf-8'))
+            console.print(f"  创建时间: {metadata.get('created_at', 'unknown')}")
+            console.print(f"  版本: {metadata.get('version', 1)}")
+            console.print(f"  命名空间: {metadata.get('namespace', 'default')}")
+        except KeyError:
+            console.print("  [dim]旧版备份格式[/dim]")
+        
+        console.print()
+        
+        # List all files
+        all_files = zf.namelist()
+        
+        # Database
+        if 'tgf.db' in all_files:
+            info = zf.getinfo('tgf.db')
+            console.print(f"[cyan]数据库:[/cyan] tgf.db ({info.file_size / 1024:.1f} KB)")
+        
+        # Sessions
+        sessions = [f for f in all_files if f.startswith('sessions/') and not f.endswith('/')]
+        if sessions:
+            console.print(f"\n[cyan]会话文件 ({len(sessions)}):[/cyan]")
+            for sf in sessions:
+                info = zf.getinfo(sf)
+                console.print(f"  {Path(sf).name} ({info.file_size / 1024:.1f} KB)")
+        
+        # Env
+        if '.env' in all_files:
+            console.print(f"\n[cyan]环境配置:[/cyan] .env")
+        
+        # Logs
+        logs = [f for f in all_files if f.startswith('logs/')]
+        if logs:
+            console.print(f"\n[cyan]日志文件:[/cyan] {len(logs)} 个")
+        
+        # Total size
+        total_size = sum(zf.getinfo(f).file_size for f in all_files)
+        console.print(f"\n[dim]总大小: {total_size / 1024:.1f} KB (压缩前)[/dim]")
