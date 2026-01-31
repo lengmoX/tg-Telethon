@@ -21,6 +21,21 @@ from telethon.tl.types import (
     DocumentAttributeAudio,
     DocumentAttributeAnimated,
     DocumentAttributeSticker,
+    MessageEntityBold,
+    MessageEntityItalic,
+    MessageEntityCode,
+    MessageEntityPre,
+    MessageEntityTextUrl,
+    MessageEntityMentionName,
+    MessageEntityHashtag,
+    MessageEntityCashtag,
+    MessageEntityMention,
+    MessageEntityUrl,
+    MessageEntityEmail,
+    MessageEntityPhone,
+    MessageEntityUnderline,
+    MessageEntityStrike,
+    MessageEntitySpoiler,
 )
 from telethon.errors import (
     ChatForwardsRestrictedError,
@@ -51,6 +66,78 @@ class ForwardResult:
 
 # Progress callback type: (current_bytes, total_bytes) -> None
 ProgressCallback = Callable[[int, int], None]
+
+
+def filter_entities(entities, text: str):
+    """
+    Filter and clean message entities for safe forwarding.
+    
+    Issues addressed:
+    - Bold/italic entities that overlap with hashtags/mentions cause ** to appear
+    - Some entity offsets may be incorrect after text processing
+    
+    Returns:
+        Filtered list of entities or None if entities should be ignored
+    """
+    if not entities:
+        return None
+    
+    # Types that should always be preserved
+    safe_types = (
+        MessageEntityUrl,
+        MessageEntityEmail,
+        MessageEntityPhone,
+        MessageEntityTextUrl,
+        MessageEntityMentionName,
+    )
+    
+    # Types that Telegram auto-generates (don't need to send explicitly)
+    auto_types = (
+        MessageEntityHashtag,
+        MessageEntityCashtag,
+        MessageEntityMention,
+    )
+    
+    # Formatting types that might cause issues
+    format_types = (
+        MessageEntityBold,
+        MessageEntityItalic,
+        MessageEntityUnderline,
+        MessageEntityStrike,
+        MessageEntityCode,
+        MessageEntityPre,
+        MessageEntitySpoiler,
+    )
+    
+    filtered = []
+    
+    for entity in entities:
+        # Skip auto-generated types - Telegram will recreate them
+        if isinstance(entity, auto_types):
+            continue
+        
+        # Always keep safe types
+        if isinstance(entity, safe_types):
+            filtered.append(entity)
+            continue
+        
+        # For formatting types, check if they overlap with auto-generated content
+        if isinstance(entity, format_types):
+            start = entity.offset
+            end = entity.offset + entity.length
+            segment = text[start:end] if end <= len(text) else ""
+            
+            # Skip if segment starts with # or @ (likely hashtag/mention)
+            if segment.startswith('#') or segment.startswith('@') or segment.startswith('$'):
+                continue
+            
+            filtered.append(entity)
+            continue
+        
+        # Keep other entity types
+        filtered.append(entity)
+    
+    return filtered if filtered else None
 
 
 class MessageForwarder:
@@ -178,7 +265,7 @@ class MessageForwarder:
         result = await self.client.send_message(
             target_chat,
             message.text,
-            formatting_entities=message.entities,
+            formatting_entities=filter_entities(message.entities, message.text or ""),
             link_preview=bool(message.media and isinstance(message.media, MessageMediaWebPage))
         )
         
@@ -262,7 +349,7 @@ class MessageForwarder:
                 target_chat,
                 file=media.photo,
                 caption=caption,
-                formatting_entities=entities
+                formatting_entities=filter_entities(entities, caption)
             )
             
         elif isinstance(media, MessageMediaDocument):
@@ -280,7 +367,7 @@ class MessageForwarder:
                 target_chat,
                 file=doc,
                 caption=caption,
-                formatting_entities=entities,
+                formatting_entities=filter_entities(entities, caption),
                 voice_note=is_voice,
                 video_note=self._is_video_note(doc),
                 supports_streaming=is_video,
@@ -343,7 +430,7 @@ class MessageForwarder:
                 target_chat,
                 file=tmp_path,
                 caption=caption,
-                formatting_entities=entities,
+                formatting_entities=filter_entities(entities, caption),
                 attributes=attributes,  # Preserve original attributes (filename, video size, duration, etc.)
                 mime_type=mime_type,    # Preserve MIME type
                 voice_note=is_voice,
