@@ -94,20 +94,49 @@ cli.add_command(backup)
 @cli.command()
 @click.pass_context
 def info(ctx):
-    """Show current configuration info"""
+    """Show current configuration and login status"""
     config = ctx.obj["config"]
     namespace = ctx.obj["namespace"]
     
-    console.print(f"[bold]TGF Configuration[/bold]")
-    console.print(f"  Namespace: [cyan]{namespace}[/cyan]")
-    console.print(f"  Data dir:  [dim]{config.data_dir}[/dim]")
-    console.print(f"  DB path:   [dim]{config.db_path}[/dim]")
-    console.print(f"  Sessions:  [dim]{config.sessions_dir}[/dim]")
+    console.print(f"\n[bold cyan]═══ TGF 状态 ═══[/bold cyan]\n")
     
+    # Configuration
+    console.print(f"[bold]配置信息[/bold]")
+    console.print(f"  命名空间: [cyan]{namespace}[/cyan]")
+    console.print(f"  数据目录: [dim]{config.data_dir}[/dim]")
+    console.print(f"  数据库:   [dim]{config.db_path}[/dim]")
+    console.print(f"  会话目录: [dim]{config.sessions_dir}[/dim]")
+    
+    # API credentials
+    console.print(f"\n[bold]API 凭证[/bold]")
     if config.has_credentials():
-        console.print(f"  API ID:    [green]Configured[/green]")
+        console.print(f"  API ID:   [green]已配置[/green] ({config.api_id})")
+        console.print(f"  API Hash: [green]已配置[/green]")
     else:
-        console.print(f"  API ID:    [red]Not set[/red] (set TGF_API_ID)")
+        console.print(f"  API ID:   [red]未配置[/red]")
+        console.print(f"  API Hash: [red]未配置[/red]")
+        console.print(f"\n  [yellow]请创建配置文件:[/yellow]")
+        console.print(f"    {config.data_dir / '.env'}")
+        console.print(f"  [dim]内容:[/dim]")
+        console.print(f"    TGF_API_ID=你的API_ID")
+        console.print(f"    TGF_API_HASH=你的API_HASH")
+    
+    # Login status
+    console.print(f"\n[bold]登录状态[/bold]")
+    session_file = config.get_session_path(namespace)
+    if session_file.exists():
+        import os
+        from datetime import datetime
+        stat = session_file.stat()
+        mtime = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
+        size = stat.st_size / 1024
+        console.print(f"  会话文件: [green]存在[/green]")
+        console.print(f"  文件大小: {size:.1f} KB")
+        console.print(f"  最后修改: {mtime}")
+        console.print(f"  [dim]使用 'tgf login' 可重新登录[/dim]")
+    else:
+        console.print(f"  会话文件: [red]不存在[/red]")
+        console.print(f"  [yellow]使用 'tgf login' 登录[/yellow]")
 
 
 if __name__ == '__main__':
