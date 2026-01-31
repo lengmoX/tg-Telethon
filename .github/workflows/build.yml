@@ -13,8 +13,8 @@ jobs:
     strategy:
       matrix:
         include:
-          # Use Ubuntu 20.04 for better GLIBC compatibility
-          - os: ubuntu-20.04
+          # Ubuntu 22.04 has GLIBC 2.35, compatible with Debian 12+
+          - os: ubuntu-22.04
             artifact_name: tgf
             asset_name: tgf-linux
           - os: windows-latest
