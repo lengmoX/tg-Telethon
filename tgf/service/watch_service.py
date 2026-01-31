@@ -102,6 +102,8 @@ class WatchService:
         Returns:
             SyncResult with statistics
         """
+        import random
+        
         result = SyncResult(rule_name=rule_name)
         
         # Get rule
@@ -127,6 +129,28 @@ class WatchService:
             source = await self._client.get_entity(rule.source_chat)
             target = await self._client.get_entity(rule.target_chat)
             
+            # First time sync: Initialize to latest message, don't forward old messages
+            if last_msg_id == 0:
+                self.logger.info(f"First sync for rule '{rule_name}', initializing to latest message")
+                
+                # Get the latest message from source
+                async for msg in self._client.iter_messages(source, limit=1):
+                    last_msg_id = msg.id
+                    self.logger.info(f"Initialized last_msg_id to {last_msg_id}")
+                    
+                    # Save the initial state
+                    await self._db.update_state(
+                        rule_id=rule.id,
+                        namespace=self.namespace,
+                        last_msg_id=last_msg_id,
+                        increment_forwarded=0
+                    )
+                    break
+                
+                # Return empty result - no messages to forward on first sync
+                self.logger.info(f"Rule '{rule_name}' initialized. Waiting for new messages.")
+                return result
+            
             # Get new messages (> last_msg_id)
             messages = []
             async for msg in self._client.iter_messages(
@@ -142,10 +166,10 @@ class WatchService:
                 self.logger.info(f"No new messages for rule '{rule_name}'")
                 return result
             
-            # Forward messages
+            # Forward messages with random delay
             mode = ForwardMode(rule.mode)
             
-            for msg in messages:
+            for i, msg in enumerate(messages):
                 if on_message:
                     on_message(msg)
                 
@@ -162,6 +186,12 @@ class WatchService:
                     )
                 
                 result.new_last_msg_id = max(result.new_last_msg_id, msg.id)
+                
+                # Random delay between messages (5-10 seconds) to avoid rate limiting
+                if i < len(messages) - 1:  # Don't delay after last message
+                    delay = random.uniform(5.0, 10.0)
+                    self.logger.debug(f"Waiting {delay:.1f}s before next message")
+                    await asyncio.sleep(delay)
             
             # Update state
             if result.new_last_msg_id > 0:

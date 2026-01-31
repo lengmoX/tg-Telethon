@@ -6,6 +6,8 @@ Forward messages between chats with URL/link support.
 
 import re
 import json
+import asyncio
+import random
 import click
 from pathlib import Path
 from typing import List, Tuple, Optional
@@ -321,6 +323,14 @@ async def forward(
                     
                     progress.advance(main_task)
                     progress.update(main_task, status="")
+                    
+                    # Random delay between messages (5-10 seconds) to avoid rate limiting
+                    # Only delay if there are more messages to forward
+                    remaining = len(msg_ids) - (msg_ids.index(msg_id) + 1)
+                    if remaining > 0 and not dry_run:
+                        delay = random.uniform(5.0, 10.0)
+                        progress.update(main_task, status=f"[dim]Waiting {delay:.0f}s...[/dim]")
+                        await asyncio.sleep(delay)
         
         console.print()
         
