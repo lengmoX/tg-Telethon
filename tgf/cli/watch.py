@@ -72,7 +72,7 @@ def remove_pid(config):
         pid_file.unlink()
 
 
-@click.group(invoke_without_command=True)
+@click.command('watch')
 @click.argument('rule_name', required=False, default=None)
 @click.option(
     '--once',
@@ -85,7 +85,9 @@ def remove_pid(config):
     help='Run in background (daemon mode)'
 )
 @click.pass_context
-def watch(ctx, rule_name: str, once: bool, daemon: bool):
+@async_command
+@require_login
+async def watch(ctx, rule_name: str, once: bool, daemon: bool):
     """
     Start watching and syncing rules
     
@@ -97,81 +99,14 @@ def watch(ctx, rule_name: str, once: bool, daemon: bool):
     Examples:
       tgf watch             # Watch all enabled rules (foreground)
       tgf watch -d          # Watch in background (daemon mode)
-      tgf watch stop        # Stop background watcher
-      tgf watch status      # Check if watcher is running
       tgf watch myname      # Watch specific rule
       tgf watch --once      # Sync all once and exit
+    
+    \b
+    Daemon control (see separate commands):
+      tgf stop              # Stop background watcher
+      tgf status            # Check watcher and rules status
     """
-    # If subcommand is invoked, don't run default
-    if ctx.invoked_subcommand is not None:
-        return
-    
-    # Run the actual watch
-    ctx.invoke(_watch_run, rule_name=rule_name, once=once, daemon=daemon)
-
-
-@watch.command('start')
-@click.argument('rule_name', required=False, default=None)
-@click.pass_context
-def watch_start(ctx, rule_name: str):
-    """Start watching in background (daemon mode)"""
-    ctx.invoke(_watch_run, rule_name=rule_name, once=False, daemon=True)
-
-
-@watch.command('stop')
-@click.pass_context
-def watch_stop(ctx):
-    """Stop the background watcher"""
-    config = get_config()
-    
-    pid = read_pid(config)
-    if pid is None:
-        print_warning("Watcher is not running")
-        return
-    
-    try:
-        if sys.platform == 'win32':
-            # Windows: use taskkill
-            subprocess.run(['taskkill', '/F', '/PID', str(pid)], 
-                         capture_output=True)
-        else:
-            # Unix: send SIGTERM
-            os.kill(pid, signal.SIGTERM)
-        
-        remove_pid(config)
-        print_success(f"Watcher stopped (PID: {pid})")
-    except Exception as e:
-        print_error(f"Failed to stop watcher: {e}")
-
-
-@watch.command('status')
-@click.pass_context
-def watch_status(ctx):
-    """Check if watcher is running"""
-    config = get_config()
-    
-    pid = read_pid(config)
-    if pid:
-        print_success(f"Watcher is running (PID: {pid})")
-        
-        # Show log file location
-        log_file = get_log_file(config)
-        if log_file.exists():
-            console.print(f"  Log file: {log_file}")
-    else:
-        print_info("Watcher is not running")
-        console.print("  Start with: tgf watch -d")
-
-
-@click.command('_watch_run', hidden=True)
-@click.argument('rule_name', required=False, default=None)
-@click.option('--once', is_flag=True)
-@click.option('-d', '--daemon', is_flag=True)
-@click.pass_context
-@async_command
-@require_login
-async def _watch_run(ctx, rule_name: str, once: bool, daemon: bool):
-    """Internal command to run watch"""
     config = ctx.obj["config"]
     namespace = ctx.obj["namespace"]
     
@@ -181,7 +116,7 @@ async def _watch_run(ctx, rule_name: str, once: bool, daemon: bool):
         existing_pid = read_pid(config)
         if existing_pid:
             print_warning(f"Watcher already running (PID: {existing_pid})")
-            print_info("Use 'tgf watch stop' to stop it first")
+            print_info("Use 'tgf stop' to stop it first")
             return
         
         # Start daemon process
@@ -290,22 +225,48 @@ def _start_daemon(config, namespace: str, rule_name: str | None):
     print_success(f"Watcher started in background (PID: {pid})")
     console.print(f"  Log file: {log_file}")
     console.print()
-    console.print("  [dim]Check status:[/dim] tgf watch status")
-    console.print("  [dim]Stop watcher:[/dim]  tgf watch stop")
+    console.print("  [dim]Check status:[/dim] tgf status")
+    console.print("  [dim]Stop watcher:[/dim]  tgf stop")
     console.print("  [dim]View logs:[/dim]     tail -f " + str(log_file))
 
 
-@click.command()
+@click.command('stop')
+@click.pass_context
+def stop(ctx):
+    """Stop the background watcher"""
+    config = get_config()
+    
+    pid = read_pid(config)
+    if pid is None:
+        print_warning("Watcher is not running")
+        return
+    
+    try:
+        if sys.platform == 'win32':
+            # Windows: use taskkill
+            subprocess.run(['taskkill', '/F', '/PID', str(pid)], 
+                         capture_output=True)
+        else:
+            # Unix: send SIGTERM
+            os.kill(pid, signal.SIGTERM)
+        
+        remove_pid(config)
+        print_success(f"Watcher stopped (PID: {pid})")
+    except Exception as e:
+        print_error(f"Failed to stop watcher: {e}")
+
+
+@click.command('status')
 @click.argument('rule_name', required=False, default=None)
 @click.pass_context
 @async_command
 async def status(ctx, rule_name: str):
     """
-    Show status of rules and sync state
+    Show status of watcher and rules
     
     \b
     Examples:
-      tgf status           # Show all rules status
+      tgf status           # Show watcher status and all rules
       tgf status myname    # Show specific rule status
     """
     config = ctx.obj["config"]
@@ -315,6 +276,17 @@ async def status(ctx, rule_name: str):
     await db.connect()
     
     try:
+        # Check if watcher is running
+        pid = read_pid(config)
+        if pid:
+            console.print(f"[green]● Watcher running[/green] (PID: {pid})")
+            log_file = get_log_file(config)
+            console.print(f"  Log: {log_file}")
+        else:
+            console.print("[dim]○ Watcher not running[/dim]")
+            console.print("  Start with: tgf watch -d")
+        console.print()
+        
         if rule_name:
             rule_dict = await db.get_rule(name=rule_name)
             if not rule_dict:
@@ -325,19 +297,11 @@ async def status(ctx, rule_name: str):
             rules = await db.get_all_rules()
         
         if not rules:
-            print_info("No rules found")
+            print_info("No rules found. Create one with: tgf rule add --name NAME -s SOURCE -t TARGET")
             return
         
-        # Check if watcher is running
-        pid = read_pid(config)
-        if pid:
-            console.print(f"[green]● Watcher running[/green] (PID: {pid})")
-        else:
-            console.print("[dim]○ Watcher not running[/dim]")
-        console.print()
-        
         table = create_table(
-            f"Rule Status (namespace: {namespace})",
+            f"Rules (namespace: {namespace})",
             [
                 ("Rule", {}),
                 ("Source → Target", {}),

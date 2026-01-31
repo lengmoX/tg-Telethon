@@ -169,10 +169,10 @@ tgf watch
 tgf watch -d
 
 # 查看监听状态
-tgf watch status
+tgf status
 
 # 停止后台监听
-tgf watch stop
+tgf stop
 
 # 只监听指定规则
 tgf watch myname

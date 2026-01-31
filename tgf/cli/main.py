@@ -75,7 +75,7 @@ def cli(ctx, ns: str, verbose: bool, debug: bool):
 from tgf.cli.login import login, logout
 from tgf.cli.forward import forward
 from tgf.cli.rule import rule
-from tgf.cli.watch import watch, status
+from tgf.cli.watch import watch, status, stop
 from tgf.cli.chat import chat
 from tgf.cli.filter import filter
 from tgf.cli.backup import backup
@@ -86,6 +86,7 @@ cli.add_command(forward)
 cli.add_command(rule)
 cli.add_command(watch)
 cli.add_command(status)
+cli.add_command(stop)
 cli.add_command(chat)
 cli.add_command(filter)
 cli.add_command(backup)
