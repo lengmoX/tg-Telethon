@@ -9,6 +9,7 @@ Handles:
 """
 
 import os
+import sys
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
@@ -21,12 +22,29 @@ except ImportError:
     HAS_DOTENV = False
 
 
+def get_app_dir() -> Path:
+    """
+    Get the application directory.
+    
+    When frozen (PyInstaller): directory containing the executable
+    When running as script: ~/.tgf
+    """
+    if getattr(sys, 'frozen', False):
+        # Running as compiled executable
+        # Use executable's directory for portable mode
+        exe_dir = Path(sys.executable).parent
+        return exe_dir / "tgf_data"
+    else:
+        # Running as script, use home directory
+        return Path.home() / ".tgf"
+
+
 @dataclass
 class Config:
     """Global configuration for TGF"""
     
-    # Default data directory: ~/.tgf
-    data_dir: Path = field(default_factory=lambda: Path.home() / ".tgf")
+    # Default data directory
+    data_dir: Path = field(default_factory=get_app_dir)
     
     # Telegram API credentials (from https://my.telegram.org)
     api_id: Optional[int] = None
@@ -62,9 +80,16 @@ class Config:
         # Search for .env file in multiple locations
         search_paths = [
             Path.cwd() / ".env",                    # Current directory
-            Path(__file__).parent.parent.parent / ".env",  # Project root
             self.data_dir / ".env",                 # Data directory
         ]
+        
+        # Add executable directory for frozen builds
+        if getattr(sys, 'frozen', False):
+            exe_dir = Path(sys.executable).parent
+            search_paths.insert(0, exe_dir / ".env")
+        else:
+            # Project root for development
+            search_paths.append(Path(__file__).parent.parent.parent / ".env")
         
         for env_path in search_paths:
             if env_path.exists():

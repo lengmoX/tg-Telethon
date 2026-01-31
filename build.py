@@ -22,19 +22,23 @@ COMMON_OPTIONS = [
     "--clean",    # Clean cache
     "--noconfirm",
     
+    # Use custom hooks
+    "--additional-hooks-dir=hooks",
+    
     # Hidden imports (Telethon and dependencies)
     "--hidden-import=telethon",
     "--hidden-import=telethon.tl.alltlobjects",
     "--hidden-import=aiosqlite",
     "--hidden-import=click",
     "--hidden-import=rich",
-    "--hidden-import=rich._unicode_data",
+    "--hidden-import=rich.markup",
+    "--hidden-import=rich.emoji",
     "--hidden-import=qrcode",
     "--hidden-import=dotenv",
     "--hidden-import=python-dotenv",
     
     # Collect all data files from rich (for unicode tables)
-    "--collect-data=rich",
+    "--collect-all=rich",
     
     # Exclude unnecessary modules to reduce size
     "--exclude-module=tkinter",
