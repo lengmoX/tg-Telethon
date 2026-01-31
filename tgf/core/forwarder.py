@@ -2,9 +2,12 @@
 Message Forwarder for TGF
 
 Handles message forwarding with clone and direct modes.
+Supports streaming download/upload for restricted channels.
 """
 
-from typing import Optional, Union, List, Tuple
+import os
+import tempfile
+from typing import Optional, List, Callable
 from dataclasses import dataclass
 from enum import Enum
 
@@ -16,12 +19,11 @@ from telethon.tl.types import (
     DocumentAttributeFilename,
     DocumentAttributeVideo,
     DocumentAttributeAudio,
-    InputMediaPhoto,
-    InputMediaDocument,
+    DocumentAttributeAnimated,
+    DocumentAttributeSticker,
 )
 from telethon.errors import (
     ChatForwardsRestrictedError,
-    MediaCaptionTooLongError,
     FloodWaitError,
 )
 
@@ -47,6 +49,10 @@ class ForwardResult:
     downloaded: bool = False  # True if media was downloaded/uploaded
 
 
+# Progress callback type: (current_bytes, total_bytes) -> None
+ProgressCallback = Callable[[int, int], None]
+
+
 class MessageForwarder:
     """
     Forwards messages between Telegram chats.
@@ -65,7 +71,8 @@ class MessageForwarder:
         message: Message,
         target_chat,
         mode: ForwardMode = ForwardMode.CLONE,
-        fallback_to_download: bool = True
+        fallback_to_download: bool = True,
+        progress_callback: Optional[ProgressCallback] = None
     ) -> ForwardResult:
         """
         Forward a single message
@@ -75,6 +82,7 @@ class MessageForwarder:
             target_chat: Target chat entity
             mode: Forwarding mode
             fallback_to_download: If clone fails, download and re-upload
+            progress_callback: Callback for download/upload progress
         
         Returns:
             ForwardResult with success status and details
@@ -85,7 +93,9 @@ class MessageForwarder:
             if mode == ForwardMode.DIRECT:
                 result = await self._forward_direct(message, target_chat)
             else:
-                result = await self._forward_clone(message, target_chat, fallback_to_download)
+                result = await self._forward_clone(
+                    message, target_chat, fallback_to_download, progress_callback
+                )
             
             return result
             
@@ -136,7 +146,8 @@ class MessageForwarder:
         self,
         message: Message,
         target_chat,
-        fallback_to_download: bool = True
+        fallback_to_download: bool = True,
+        progress_callback: Optional[ProgressCallback] = None
     ) -> ForwardResult:
         """Forward by copying message content (no header)"""
         source_msg_id = message.id
@@ -144,7 +155,7 @@ class MessageForwarder:
         # Check if message has media
         if message.media:
             return await self._clone_media_message(
-                message, target_chat, fallback_to_download
+                message, target_chat, fallback_to_download, progress_callback
             )
         else:
             return await self._clone_text_message(message, target_chat)
@@ -182,10 +193,18 @@ class MessageForwarder:
         self,
         message: Message,
         target_chat,
-        fallback_to_download: bool = True
+        fallback_to_download: bool = True,
+        progress_callback: Optional[ProgressCallback] = None
     ) -> ForwardResult:
         """Clone a message with media"""
         source_msg_id = message.id
+        
+        # Check if restricted (need to download/upload)
+        is_restricted = self._is_restricted(message)
+        
+        if is_restricted:
+            self.logger.debug("Channel is restricted, will download and upload")
+            return await self._download_and_upload(message, target_chat, progress_callback)
         
         # Try to send using file reference (fast, no download)
         try:
@@ -198,7 +217,7 @@ class MessageForwarder:
                 downloaded=False
             )
             
-        except (Exception,) as e:
+        except Exception as e:
             if not fallback_to_download:
                 return ForwardResult(
                     success=False,
@@ -209,7 +228,20 @@ class MessageForwarder:
             self.logger.debug(f"File reference failed, downloading: {e}")
         
         # Fallback: download and re-upload
-        return await self._download_and_upload(message, target_chat)
+        return await self._download_and_upload(message, target_chat, progress_callback)
+    
+    def _is_restricted(self, message: Message) -> bool:
+        """Check if message/chat is restricted"""
+        # Check message noforwards flag
+        if hasattr(message, 'noforwards') and message.noforwards:
+            return True
+        
+        # Check chat noforwards flag
+        chat = message.chat
+        if hasattr(chat, 'noforwards') and chat.noforwards:
+            return True
+        
+        return False
     
     async def _send_with_file_reference(
         self,
@@ -235,11 +267,23 @@ class MessageForwarder:
             
         elif isinstance(media, MessageMediaDocument):
             # Document (video, file, audio, gif, etc.)
+            doc = media.document
+            
+            # Determine how to send based on attributes
+            is_video = self._has_video_attr(doc)
+            is_audio = self._has_audio_attr(doc)
+            is_voice = self._is_voice(doc)
+            is_gif = self._is_gif(doc)
+            is_sticker = self._is_sticker(doc)
+            
             return await self.client.send_file(
                 target_chat,
-                file=media.document,
+                file=doc,
                 caption=caption,
-                formatting_entities=entities
+                formatting_entities=entities,
+                voice_note=is_voice,
+                video_note=self._is_video_note(doc),
+                supports_streaming=is_video,
             )
         else:
             raise ForwardError(f"Unsupported media type: {type(media).__name__}")
@@ -247,35 +291,64 @@ class MessageForwarder:
     async def _download_and_upload(
         self,
         message: Message,
-        target_chat
+        target_chat,
+        progress_callback: Optional[ProgressCallback] = None
     ) -> ForwardResult:
-        """Download media and re-upload to target"""
+        """
+        Download media to temp file and re-upload to target.
+        Uses streaming to avoid high memory usage.
+        """
         source_msg_id = message.id
+        tmp_path = None
         
         try:
-            # Download to bytes
-            file_bytes = await self.client.download_media(message, file=bytes)
+            # Create temp file
+            suffix = self._get_file_extension(message)
+            fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+            os.close(fd)
             
-            if not file_bytes:
-                return ForwardResult(
-                    success=False,
-                    source_msg_id=source_msg_id,
-                    error="Failed to download media"
-                )
+            # Download to temp file (streaming, low memory)
+            self.logger.debug(f"Downloading to temp file: {tmp_path}")
+            await self.client.download_media(
+                message,
+                file=tmp_path,
+                progress_callback=progress_callback
+            )
             
-            # Determine file attributes
-            file_name = self._get_media_filename(message)
+            # Get original attributes
+            media = message.media
+            attributes = None
+            mime_type = None
+            thumb = None
+            
+            if isinstance(media, MessageMediaDocument):
+                doc = media.document
+                attributes = doc.attributes  # Preserve ALL original attributes
+                mime_type = doc.mime_type
+                # Note: thumb would require separate download, skip for now
+            
             caption = message.text or ""
             entities = message.entities
             
-            # Re-upload
+            # Determine media type for proper sending
+            is_video = self._has_video_attr(doc) if isinstance(media, MessageMediaDocument) else False
+            is_audio = self._has_audio_attr(doc) if isinstance(media, MessageMediaDocument) else False
+            is_voice = self._is_voice(doc) if isinstance(media, MessageMediaDocument) else False
+            is_gif = self._is_gif(doc) if isinstance(media, MessageMediaDocument) else False
+            
+            # Upload with preserved attributes
+            self.logger.debug(f"Uploading with mime_type={mime_type}, attrs={len(attributes) if attributes else 0}")
+            
             result = await self.client.send_file(
                 target_chat,
-                file=file_bytes,
+                file=tmp_path,
                 caption=caption,
                 formatting_entities=entities,
-                file_name=file_name,
-                force_document=self._is_document(message.media)
+                attributes=attributes,  # Preserve original attributes (filename, video size, duration, etc.)
+                mime_type=mime_type,    # Preserve MIME type
+                voice_note=is_voice,
+                supports_streaming=is_video,
+                progress_callback=progress_callback
             )
             
             return ForwardResult(
@@ -287,33 +360,90 @@ class MessageForwarder:
             )
             
         except Exception as e:
+            self.logger.error(f"Download/upload failed: {e}")
             return ForwardResult(
                 success=False,
                 source_msg_id=source_msg_id,
                 error=f"Download/upload failed: {e}"
             )
+        finally:
+            # Clean up temp file
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except:
+                    pass
     
-    def _get_media_filename(self, message: Message) -> Optional[str]:
-        """Extract filename from message media"""
+    def _get_file_extension(self, message: Message) -> str:
+        """Get file extension from message media"""
         if not message.media:
-            return None
+            return ""
+        
+        if isinstance(message.media, MessageMediaPhoto):
+            return ".jpg"
         
         if isinstance(message.media, MessageMediaDocument):
             doc = message.media.document
+            
+            # Try to get from filename attribute
             for attr in doc.attributes:
                 if isinstance(attr, DocumentAttributeFilename):
-                    return attr.file_name
+                    name = attr.file_name
+                    if '.' in name:
+                        return '.' + name.rsplit('.', 1)[1]
+            
+            # Fallback: derive from mime type
+            mime = doc.mime_type or ""
+            if mime.startswith("video/"):
+                return ".mp4"
+            elif mime.startswith("audio/"):
+                return ".mp3"
+            elif mime.startswith("image/"):
+                ext = mime.split("/")[1]
+                return f".{ext}" if ext else ".jpg"
         
-        return None
+        return ""
     
-    def _is_document(self, media) -> bool:
-        """Check if media should be sent as document"""
-        if isinstance(media, MessageMediaDocument):
-            doc = media.document
-            for attr in doc.attributes:
-                if isinstance(attr, (DocumentAttributeVideo, DocumentAttributeAudio)):
-                    return False
-            return True
+    def _has_video_attr(self, doc) -> bool:
+        """Check if document has video attribute"""
+        for attr in doc.attributes:
+            if isinstance(attr, DocumentAttributeVideo):
+                return True
+        return False
+    
+    def _has_audio_attr(self, doc) -> bool:
+        """Check if document has audio attribute"""
+        for attr in doc.attributes:
+            if isinstance(attr, DocumentAttributeAudio):
+                return True
+        return False
+    
+    def _is_voice(self, doc) -> bool:
+        """Check if document is voice note"""
+        for attr in doc.attributes:
+            if isinstance(attr, DocumentAttributeAudio) and attr.voice:
+                return True
+        return False
+    
+    def _is_video_note(self, doc) -> bool:
+        """Check if document is video note (round video)"""
+        for attr in doc.attributes:
+            if isinstance(attr, DocumentAttributeVideo) and attr.round_message:
+                return True
+        return False
+    
+    def _is_gif(self, doc) -> bool:
+        """Check if document is GIF"""
+        for attr in doc.attributes:
+            if isinstance(attr, DocumentAttributeAnimated):
+                return True
+        return False
+    
+    def _is_sticker(self, doc) -> bool:
+        """Check if document is sticker"""
+        for attr in doc.attributes:
+            if isinstance(attr, DocumentAttributeSticker):
+                return True
         return False
     
     async def forward_messages(
@@ -321,7 +451,8 @@ class MessageForwarder:
         messages: List[Message],
         target_chat,
         mode: ForwardMode = ForwardMode.CLONE,
-        fallback_to_download: bool = True
+        fallback_to_download: bool = True,
+        progress_callback: Optional[ProgressCallback] = None
     ) -> List[ForwardResult]:
         """
         Forward multiple messages
@@ -331,6 +462,7 @@ class MessageForwarder:
             target_chat: Target chat entity
             mode: Forwarding mode
             fallback_to_download: If clone fails, download and re-upload
+            progress_callback: Progress callback for each message
         
         Returns:
             List of ForwardResult for each message
@@ -339,7 +471,7 @@ class MessageForwarder:
         
         for message in messages:
             result = await self.forward_message(
-                message, target_chat, mode, fallback_to_download
+                message, target_chat, mode, fallback_to_download, progress_callback
             )
             results.append(result)
         
@@ -348,6 +480,10 @@ class MessageForwarder:
     @staticmethod
     def can_forward_direct(message: Message) -> bool:
         """Check if message can be forwarded with direct mode"""
+        # Check message noforwards flag
+        if hasattr(message, 'noforwards') and message.noforwards:
+            return False
+        
         # Check if channel restricts forwarding
         chat = message.chat
         if hasattr(chat, 'noforwards') and chat.noforwards:

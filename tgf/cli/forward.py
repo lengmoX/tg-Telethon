@@ -199,9 +199,15 @@ async def forward(
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TaskProgressColumn(),
-            console=console
+            TextColumn("[cyan]{task.fields[status]}[/cyan]"),
+            console=console,
+            transient=False
         ) as progress:
-            task = progress.add_task("Forwarding...", total=len(messages_to_forward))
+            main_task = progress.add_task(
+                "Forwarding...", 
+                total=len(messages_to_forward),
+                status=""
+            )
             
             # Group messages by source chat for efficiency
             from collections import defaultdict
@@ -215,7 +221,7 @@ async def forward(
                 except Exception as e:
                     print_warning(f"Cannot access chat {chat_id}: {e}")
                     fail_count += len(msg_ids)
-                    progress.advance(task, len(msg_ids))
+                    progress.advance(main_task, len(msg_ids))
                     continue
                 
                 for msg_id in msg_ids:
@@ -233,15 +239,34 @@ async def forward(
                             
                             msg = msgs[0]
                             
-                            # Forward it
+                            # Create progress callback for download/upload
+                            def make_progress_callback(description: str):
+                                def callback(current, total):
+                                    if total > 0:
+                                        pct = current * 100 // total
+                                        size_mb = total / (1024 * 1024)
+                                        progress.update(
+                                            main_task, 
+                                            status=f"{description} {pct}% ({size_mb:.1f}MB)"
+                                        )
+                                return callback
+                            
+                            progress.update(main_task, status="Connecting...")
+                            
+                            # Forward it with progress callback
                             result = await forwarder.forward_message(
                                 msg,
                                 dest_entity,
-                                mode=ForwardMode(mode)
+                                mode=ForwardMode(mode),
+                                progress_callback=make_progress_callback("Transferring")
                             )
                             
                             if result.success:
                                 success_count += 1
+                                if result.downloaded:
+                                    progress.update(main_task, status="[green]Done (re-uploaded)[/green]")
+                                else:
+                                    progress.update(main_task, status="[green]Done[/green]")
                             else:
                                 fail_count += 1
                                 print_warning(f"Failed {msg_id}: {result.error}")
@@ -250,7 +275,8 @@ async def forward(
                             fail_count += 1
                             print_warning(f"Error forwarding {msg_id}: {e}")
                     
-                    progress.advance(task)
+                    progress.advance(main_task)
+                    progress.update(main_task, status="")
         
         console.print()
         
@@ -260,3 +286,4 @@ async def forward(
             print_success(f"Forwarded {success_count}/{len(messages_to_forward)} message(s)")
             if fail_count > 0:
                 print_warning(f"{fail_count} message(s) failed")
+
