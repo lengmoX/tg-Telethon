@@ -1,6 +1,52 @@
-/dist/
-.env
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+
+# Virtual environments
 .venv/
-node_modules/
+venv/
+ENV/
+
+# IDE
 .idea/
+.vscode/
+*.swp
+*.swo
+
+# Build
+/dist/
 /build/
+*.spec
+
+# Environment and secrets
+.env
+*.env.local
+
+# TGF data (personal data)
+*.session
+*.session-journal
+tgf.db
+tgf_data/
+~/.tgf/
+
+# Backup files
+*.backup.tgf.json
+*.backup.tgf.zip
+tgf_backup_*.zip
+tgf-export.json
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (if any)
+node_modules/

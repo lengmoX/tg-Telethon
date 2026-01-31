@@ -1,87 +1,85 @@
 # TGF - Telegram 消息转发 CLI 工具
 
+[![Build](https://github.com/lengmoX/tg-Telethon/actions/workflows/build.yml/badge.svg)](https://github.com/lengmoX/tg-Telethon/actions/workflows/build.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 基于 Python 和 Telethon 的 Telegram 频道/群组消息转发命令行工具。
 
-## 功能特性
+## ✨ 功能特性
 
-- **QR 码登录**：无需输入手机号，使用 Telegram App 扫码即可登录
+- **QR 码登录**：无需输入手机号，支持两步验证
 - **多账号支持**：通过 `-n/--namespace` 管理多个账号
 - **两种转发模式**：
   - `clone`：复制消息内容，无"转发自"标签（默认）
   - `direct`：原生转发，带"转发自"标签
+- **消息过滤**：支持关键词、正则表达式过滤
 - **定时监听**：监控频道并自动转发新消息
-- **增量同步**：基于消息 ID 锚点，避免重复转发
-- **智能降级**：受限频道自动下载后重新上传
+- **完整备份**：导出/恢复所有数据，支持跨设备迁移
 
-## 安装
+## 📦 安装
+
+### Linux 一键安装
 
 ```bash
-# 进入项目目录
-cd d:\develop\PythonProject\tg-Telethon
-
-# 开发模式安装
-pip install -e .
-
-# 或仅安装依赖
-pip install -r requirements.txt
+curl -fsSL https://raw.githubusercontent.com/lengmoX/tg-Telethon/master/install.sh | sudo bash
 ```
 
-## 配置
+### 手动下载
+
+从 [Releases](https://github.com/lengmoX/tg-Telethon/releases) 下载对应平台的可执行文件：
+
+- **Linux**: `tgf-linux`
+- **Windows**: `tgf-windows.exe`
+
+### 从源码安装
+
+```bash
+git clone https://github.com/lengmoX/tg-Telethon.git
+cd tg-Telethon
+pip install -e .
+```
+
+## ⚙️ 配置
 
 1. 从 https://my.telegram.org 获取 API 凭证
 
-2. 复制配置模板并填写：
+2. 创建 `.env` 文件（与程序同目录）：
 
-```bash
-# 复制模板
-cp .env.example .env
-
-# 编辑 .env 文件，填入你的 API 凭证
-```
-
-`.env` 文件内容示例：
-```ini
+```env
 TGF_API_ID=12345678
 TGF_API_HASH=abcdef1234567890abcdef1234567890
 ```
 
-可选配置项：
-- `TGF_DATA_DIR`：自定义数据目录（默认：`~/.tgf`）
-- `TGF_NAMESPACE`：默认命名空间（默认：`default`）
-- `TGF_LOG_LEVEL`：日志级别（默认：`INFO`）
+可选配置：
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `TGF_DATA_DIR` | 数据目录 | `~/.tgf` 或 `./tgf_data` |
+| `TGF_NAMESPACE` | 默认命名空间 | `default` |
+| `TGF_LOG_LEVEL` | 日志级别 | `INFO` |
 
-## 快速开始
+## 🚀 快速开始
 
 ### 登录
 
 ```bash
-# QR 码登录
-tgf login
-
-# 使用其他账号登录
-tgf -n work login
+tgf login            # QR 码登录
+tgf -n work login    # 多账号登录
 ```
 
-### 手动转发
+### 转发消息
 
 ```bash
-# 转发单条消息到"已保存的消息"
+# 转发到 "已保存的消息"
 tgf forward --from https://t.me/durov/1
 
 # 转发到指定频道
 tgf forward --from https://t.me/channel/123 --to @mychannel
 
 # 转发多条消息
-tgf forward --from https://t.me/ch/1 --from https://t.me/ch/2 --to me
+tgf forward --from https://t.me/ch/1 --from https://t.me/ch/2
 
-# 从导出的 JSON 文件转发
-tgf forward --from tgf-export.json --to @target
-
-# 使用原生转发模式
+# 原生转发模式
 tgf forward --from https://t.me/channel/123 --mode direct
-
-# 预览模式（不实际转发）
-tgf forward --from https://t.me/channel/123 --dry-run
 ```
 
 ### 规则管理
@@ -90,40 +88,48 @@ tgf forward --from https://t.me/channel/123 --dry-run
 # 添加规则
 tgf rule add --name news -s @telegram -t me --interval 30
 
-# 列出所有规则
+# 添加带过滤器的规则
+tgf rule add --name clean -s @source -t @target --filter "广告;推广;!重要"
+
+# 列出/编辑/删除规则
 tgf rule list
-
-# 查看规则详情
-tgf rule show news
-
-# 编辑规则
 tgf rule edit news --interval 60
-
-# 禁用/启用规则
-tgf rule edit news --disable
-tgf rule edit news --enable
-
-# 删除规则
 tgf rule remove news
+```
+
+### 消息过滤
+
+```bash
+# 添加全局过滤器
+tgf filter add "广告" --action exclude
+tgf filter add "重要" --action include
+
+# 测试过滤效果
+tgf filter test "这是一条包含广告的消息"
 ```
 
 ### 监听模式
 
 ```bash
-# 监听所有启用的规则
-tgf watch
-
-# 监听特定规则
-tgf watch news
-
-# 同步一次后退出
-tgf watch --once
-
-# 查看状态
-tgf status
+tgf watch           # 监听所有规则
+tgf watch news      # 监听指定规则
+tgf watch --once    # 同步一次后退出
 ```
 
-## 命令参考
+### 备份与恢复
+
+```bash
+# 完整备份（包含会话、数据库、配置）
+tgf backup export
+
+# 恢复备份
+tgf backup import backup.zip
+
+# 查看备份内容
+tgf backup list backup.zip
+```
+
+## 📋 命令参考
 
 | 命令 | 说明 |
 |------|------|
@@ -132,18 +138,9 @@ tgf status
 | `tgf chat ls` | 列出所有对话 |
 | `tgf chat export` | 导出消息到 JSON |
 | `tgf forward` | 手动转发消息 |
-| `tgf rule add` | 添加转发规则 |
-| `tgf rule list` | 列出所有规则 |
-| `tgf rule show` | 查看规则详情 |
-| `tgf rule edit` | 编辑规则 |
-| `tgf rule remove` | 删除规则 |
-| `tgf filter add` | 添加全局过滤器 |
-| `tgf filter list` | 列出过滤器 |
-| `tgf filter remove` | 删除过滤器 |
-| `tgf filter test` | 测试过滤规则 |
-| `tgf backup export` | 导出备份 |
-| `tgf backup import` | 导入备份 |
-| `tgf backup list` | 查看备份内容 |
+| `tgf rule add/list/edit/remove` | 规则管理 |
+| `tgf filter add/list/remove/test` | 过滤器管理 |
+| `tgf backup export/import/list` | 备份与恢复 |
 | `tgf watch` | 启动监听模式 |
 | `tgf status` | 查看同步状态 |
 | `tgf info` | 显示配置信息 |
@@ -152,11 +149,22 @@ tgf status
 
 | 选项 | 说明 |
 |------|------|
-| `-n, --namespace NAME` | 账号命名空间（默认：default） |
-| `-v, --verbose` | 详细输出模式 |
+| `-n, --namespace NAME` | 账号命名空间 |
+| `-v, --verbose` | 详细输出 |
 | `--debug` | 调试模式 |
 
-## 架构
+## 📁 数据存储
+
+| 文件/目录 | 说明 |
+|-----------|------|
+| `sessions/` | Telethon 会话文件 |
+| `logs/` | 日志文件 |
+| `tgf.db` | SQLite 数据库 |
+| `.env` | 配置文件 |
+
+**便携模式**：打包后的可执行文件会在同目录创建 `tgf_data/` 存储所有数据。
+
+## 🏗️ 架构
 
 ```
 tgf/
@@ -167,13 +175,6 @@ tgf/
 └── utils/       # 工具函数
 ```
 
-## 数据存储
+## 📄 许可证
 
-所有数据存储在 `~/.tgf/` 目录：
-- `sessions/` - Telethon 会话文件
-- `logs/` - 日志文件
-- `tgf.db` - SQLite 数据库（规则和状态）
-
-## 许可证
-
-MIT
+MIT License
