@@ -4,9 +4,9 @@
 # 适用于 Debian/Ubuntu/CentOS 等 Linux 系统
 #
 # 使用方法:
-#   curl -fsSL https://raw.githubusercontent.com/lengmoX/tg-Telethon/master/install.sh | sudo bash
-#   或
-#   wget -qO- https://raw.githubusercontent.com/lengmoX/tg-Telethon/master/install.sh | sudo bash
+#   wget -qO install.sh https://raw.githubusercontent.com/lengmoX/tg-Telethon/master/install.sh && bash install.sh
+#   或直接下载后运行:
+#   bash install.sh
 #
 
 set -e
@@ -49,8 +49,8 @@ print_warning() {
 # 检查是否为 root 用户
 check_root() {
     if [ "$EUID" -ne 0 ]; then
-        print_error "请使用 sudo 运行此脚本"
-        print_info "例如: sudo $0"
+        print_error "请使用 sudo 或 root 用户运行此脚本"
+        print_info "例如: sudo bash install.sh"
         exit 1
     fi
 }
@@ -115,13 +115,13 @@ install_tgf() {
     # 下载
     if ! curl -fsSL -o "$tmp_file" "$download_url" 2>/dev/null; then
         print_error "下载失败"
-        print_info ""
+        echo ""
         print_info "可能的原因:"
         print_info "  1. 版本 $version 尚未发布可执行文件"
         print_info "  2. 网络连接问题"
-        print_info ""
+        echo ""
         print_info "手动下载地址: https://github.com/$GITHUB_REPO/releases"
-        print_info "手动安装命令: sudo cp tgf-linux /usr/local/bin/tgf && sudo chmod +x /usr/local/bin/tgf"
+        print_info "手动安装命令: cp tgf-linux /usr/local/bin/tgf && chmod +x /usr/local/bin/tgf"
         rm -rf "$tmp_dir"
         exit 1
     fi
@@ -141,8 +141,8 @@ install_tgf() {
     rm -rf "$tmp_dir"
     
     # 创建数据目录（使用实际用户权限）
-    if [ -n "$REAL_USER" ]; then
-        sudo -u "$REAL_USER" mkdir -p "$TGF_DATA_DIR"
+    if [ -n "$SUDO_USER" ]; then
+        sudo -u "$SUDO_USER" mkdir -p "$TGF_DATA_DIR"
     else
         mkdir -p "$TGF_DATA_DIR"
     fi
@@ -210,9 +210,9 @@ uninstall_tgf() {
     # 询问是否删除数据
     echo ""
     if [ -d "$TGF_DATA_DIR" ]; then
-        read -p "是否删除数据目录 $TGF_DATA_DIR? [y/N] " -n 1 -r
-        echo ""
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo -n "是否删除数据目录 $TGF_DATA_DIR? [y/N] "
+        read -r answer </dev/tty
+        if [[ "$answer" =~ ^[Yy]$ ]]; then
             rm -rf "$TGF_DATA_DIR"
             print_success "已删除数据目录"
         else
@@ -241,64 +241,36 @@ show_menu() {
     echo ""
 }
 
-# 主函数
-main() {
-    # 如果有参数，直接执行（非交互模式）
-    case "${1:-}" in
-        install)
-            check_root
-            install_tgf
-            exit 0
-            ;;
-        update)
-            check_root
-            update_tgf
-            exit 0
-            ;;
-        uninstall)
-            check_root
-            uninstall_tgf
-            exit 0
-            ;;
-        --help|-h)
-            echo "TGF 安装脚本"
-            echo ""
-            echo "用法: $0 [command]"
-            echo ""
-            echo "命令:"
-            echo "  install    安装 TGF"
-            echo "  update     更新 TGF"
-            echo "  uninstall  卸载 TGF"
-            echo ""
-            echo "如果不带参数运行，将显示交互式菜单"
-            exit 0
-            ;;
-    esac
-    
-    # 交互式菜单
+# 等待按键
+wait_key() {
+    echo ""
+    echo -n "按回车键继续..."
+    read -r </dev/tty
+}
+
+# 交互式菜单
+interactive_menu() {
     check_root
     
     while true; do
         show_menu
-        read -p "请选择 [0-3]: " choice
+        echo -n "请选择 [0-3]: "
+        read -r choice </dev/tty
         
-        case $choice in
+        case "$choice" in
             1)
                 install_tgf
-                echo ""
-                read -p "按回车键继续..."
+                wait_key
                 ;;
             2)
                 update_tgf
-                echo ""
-                read -p "按回车键继续..."
+                wait_key
                 ;;
             3)
                 uninstall_tgf
-                echo ""
-                read -p "按回车键继续..."
+                wait_key
                 ;;
-            0)
+            0|q|Q)
                 echo ""
                 echo "再见!"
                 exit 0
@@ -309,6 +281,55 @@ main() {
                 ;;
         esac
     done
+}
+
+# 显示帮助
+show_help() {
+    echo "TGF 安装脚本"
+    echo ""
+    echo "用法: bash $0 [command]"
+    echo ""
+    echo "命令:"
+    echo "  install    直接安装 TGF"
+    echo "  update     更新 TGF"
+    echo "  uninstall  卸载 TGF"
+    echo "  menu       显示交互式菜单"
+    echo ""
+    echo "如果不带参数运行，将显示交互式菜单"
+}
+
+# 主函数
+main() {
+    # 如果有参数，使用非交互模式
+    case "${1:-}" in
+        install)
+            check_root
+            install_tgf
+            ;;
+        update)
+            check_root
+            update_tgf
+            ;;
+        uninstall)
+            check_root
+            uninstall_tgf
+            ;;
+        menu)
+            interactive_menu
+            ;;
+        --help|-h|help)
+            show_help
+            ;;
+        "")
+            # 无参数时显示交互式菜单
+            interactive_menu
+            ;;
+        *)
+            print_error "未知命令: $1"
+            show_help
+            exit 1
+            ;;
+    esac
 }
 
 main "$@"
