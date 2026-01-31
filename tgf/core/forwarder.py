@@ -564,6 +564,200 @@ class MessageForwarder:
         
         return results
     
+    async def get_grouped_messages(self, message: Message) -> List[Message]:
+        """
+        Get all messages belonging to the same media group (album).
+        
+        Args:
+            message: Any message from the group
+        
+        Returns:
+            List of all messages in the group, sorted by ID
+        """
+        if not message.grouped_id:
+            return [message]
+        
+        chat = message.chat
+        grouped_id = message.grouped_id
+        
+        # Get surrounding messages (media groups are usually consecutive)
+        # Fetch messages around the target ID
+        msg_ids = list(range(message.id - 10, message.id + 11))
+        
+        try:
+            messages = await self.client.get_messages(chat, ids=msg_ids)
+        except Exception as e:
+            self.logger.warning(f"Failed to get grouped messages: {e}")
+            return [message]
+        
+        # Filter messages with same grouped_id
+        grouped = [
+            m for m in messages 
+            if m and hasattr(m, 'grouped_id') and m.grouped_id == grouped_id
+        ]
+        
+        # Sort by message ID
+        grouped.sort(key=lambda m: m.id)
+        
+        if not grouped:
+            return [message]
+        
+        self.logger.debug(f"Found {len(grouped)} messages in group {grouped_id}")
+        return grouped
+    
+    async def forward_album(
+        self,
+        messages: List[Message],
+        target_chat,
+        mode: ForwardMode = ForwardMode.CLONE,
+        progress_callback: Optional[ProgressCallback] = None
+    ) -> ForwardResult:
+        """
+        Forward a media group (album) as a single unit.
+        
+        Args:
+            messages: List of messages in the album (sorted by ID)
+            target_chat: Target chat entity
+            mode: Forward mode
+            progress_callback: Progress callback
+        
+        Returns:
+            ForwardResult for the album
+        """
+        if not messages:
+            return ForwardResult(
+                success=False,
+                source_msg_id=0,
+                error="No messages to forward"
+            )
+        
+        first_msg = messages[0]
+        source_msg_id = first_msg.id
+        
+        try:
+            if mode == ForwardMode.DIRECT:
+                # Direct forward all messages in the group
+                msg_ids = [m.id for m in messages]
+                result = await self.client.forward_messages(
+                    target_chat,
+                    msg_ids,
+                    first_msg.chat
+                )
+                target_ids = [r.id for r in result] if isinstance(result, list) else [result.id]
+                
+                return ForwardResult(
+                    success=True,
+                    source_msg_id=source_msg_id,
+                    target_msg_id=target_ids[0] if target_ids else None,
+                    mode_used=ForwardMode.DIRECT
+                )
+            
+            # Clone mode: download and re-upload as album
+            return await self._clone_album(messages, target_chat, progress_callback)
+            
+        except ChatForwardsRestrictedError:
+            self.logger.info("Channel restricts forwarding, using download/upload")
+            return await self._clone_album(messages, target_chat, progress_callback)
+            
+        except Exception as e:
+            self.logger.error(f"Forward album failed: {e}")
+            return ForwardResult(
+                success=False,
+                source_msg_id=source_msg_id,
+                error=str(e)
+            )
+    
+    async def _clone_album(
+        self,
+        messages: List[Message],
+        target_chat,
+        progress_callback: Optional[ProgressCallback] = None
+    ) -> ForwardResult:
+        """Clone an album by downloading and re-uploading all files"""
+        import tempfile
+        
+        first_msg = messages[0]
+        source_msg_id = first_msg.id
+        tmp_files = []
+        
+        try:
+            # Download all files to temp directory
+            for i, msg in enumerate(messages):
+                if not msg.media:
+                    continue
+                
+                suffix = self._get_file_extension(msg)
+                fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+                os.close(fd)
+                
+                self.logger.debug(f"Downloading album item {i+1}/{len(messages)}")
+                await self.client.download_media(
+                    msg,
+                    file=tmp_path,
+                    progress_callback=progress_callback
+                )
+                
+                # Store file info with caption (only first message has caption typically)
+                caption = msg.text or "" if i == 0 else ""
+                entities = msg.entities if i == 0 else None
+                
+                tmp_files.append({
+                    'path': tmp_path,
+                    'caption': caption,
+                    'entities': filter_entities(entities, caption) if entities else None,
+                    'message': msg
+                })
+            
+            if not tmp_files:
+                return ForwardResult(
+                    success=False,
+                    source_msg_id=source_msg_id,
+                    error="No media files in album"
+                )
+            
+            # Prepare files for send_file (list of paths with captions)
+            files = [f['path'] for f in tmp_files]
+            caption = tmp_files[0]['caption']
+            entities = tmp_files[0]['entities']
+            
+            self.logger.debug(f"Uploading album with {len(files)} files")
+            
+            # Send as album
+            result = await self.client.send_file(
+                target_chat,
+                file=files,
+                caption=caption,
+                formatting_entities=entities,
+                progress_callback=progress_callback
+            )
+            
+            # Result is a list of messages for album
+            target_ids = [r.id for r in result] if isinstance(result, list) else [result.id]
+            
+            return ForwardResult(
+                success=True,
+                source_msg_id=source_msg_id,
+                target_msg_id=target_ids[0] if target_ids else None,
+                mode_used=ForwardMode.CLONE,
+                downloaded=True
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Clone album failed: {e}")
+            return ForwardResult(
+                success=False,
+                source_msg_id=source_msg_id,
+                error=f"Clone album failed: {e}"
+            )
+        finally:
+            # Clean up temp files
+            for f in tmp_files:
+                try:
+                    if os.path.exists(f['path']):
+                        os.unlink(f['path'])
+                except:
+                    pass
+    
     @staticmethod
     def can_forward_direct(message: Message) -> bool:
         """Check if message can be forwarded with direct mode"""

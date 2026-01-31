@@ -110,6 +110,11 @@ def load_from_json(filepath: str) -> List[Tuple[str, int]]:
     is_flag=True,
     help='Send without notification'
 )
+@click.option(
+    '--group/--no-group',
+    default=True,
+    help='Auto-detect and forward media groups (albums) together (default: on)'
+)
 @click.pass_context
 @async_command
 @require_login
@@ -119,7 +124,8 @@ async def forward(
     dest: str,
     mode: str,
     dry_run: bool,
-    silent: bool
+    silent: bool,
+    group: bool
 ):
     """
     Forward messages from source to destination
@@ -143,6 +149,7 @@ async def forward(
       tgf forward --from https://t.me/channel/123 --to @mychannel
       tgf forward --from link1 --from link2 --to 123456789
       tgf forward --from export.json --mode direct
+      tgf forward --from https://t.me/channel/14454 --no-group  # Skip album detection
     """
     config = ctx.obj["config"]
     namespace = ctx.obj["namespace"]
@@ -215,6 +222,9 @@ async def forward(
             for chat_id, msg_id in messages_to_forward:
                 by_chat[chat_id].append(msg_id)
             
+            # Track already-forwarded message IDs (for albums)
+            forwarded_ids = set()
+            
             for chat_id, msg_ids in by_chat.items():
                 try:
                     source_entity = await client.get_entity(chat_id)
@@ -225,6 +235,11 @@ async def forward(
                     continue
                 
                 for msg_id in msg_ids:
+                    # Skip if already forwarded as part of an album
+                    if msg_id in forwarded_ids:
+                        progress.advance(main_task)
+                        continue
+                    
                     if dry_run:
                         print_info(f"[DRY RUN] Would forward: {chat_id}/{msg_id}")
                         success_count += 1
@@ -253,13 +268,42 @@ async def forward(
                             
                             progress.update(main_task, status="Connecting...")
                             
-                            # Forward it with progress callback
-                            result = await forwarder.forward_message(
-                                msg,
-                                dest_entity,
-                                mode=ForwardMode(mode),
-                                progress_callback=make_progress_callback("Transferring")
-                            )
+                            # Check if message is part of a media group
+                            if group and msg.grouped_id:
+                                # Get all messages in the group
+                                progress.update(main_task, status="Detecting album...")
+                                grouped_msgs = await forwarder.get_grouped_messages(msg)
+                                
+                                if len(grouped_msgs) > 1:
+                                    print_info(f"Album detected: {len(grouped_msgs)} items")
+                                    
+                                    # Mark all as forwarded
+                                    for gm in grouped_msgs:
+                                        forwarded_ids.add(gm.id)
+                                    
+                                    # Forward the whole album
+                                    result = await forwarder.forward_album(
+                                        grouped_msgs,
+                                        dest_entity,
+                                        mode=ForwardMode(mode),
+                                        progress_callback=make_progress_callback("Album")
+                                    )
+                                else:
+                                    # Single message, forward normally
+                                    result = await forwarder.forward_message(
+                                        msg,
+                                        dest_entity,
+                                        mode=ForwardMode(mode),
+                                        progress_callback=make_progress_callback("Transferring")
+                                    )
+                            else:
+                                # Forward single message
+                                result = await forwarder.forward_message(
+                                    msg,
+                                    dest_entity,
+                                    mode=ForwardMode(mode),
+                                    progress_callback=make_progress_callback("Transferring")
+                                )
                             
                             if result.success:
                                 success_count += 1
