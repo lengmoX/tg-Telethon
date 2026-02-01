@@ -23,8 +23,18 @@ class Database:
     
     async def connect(self) -> None:
         """Connect to database and initialize schema"""
-        self._connection = await aiosqlite.connect(self.db_path)
+        # Use timeout and isolation_level for better concurrency
+        self._connection = await aiosqlite.connect(
+            self.db_path,
+            timeout=30.0,  # Wait up to 30s for locks
+        )
         self._connection.row_factory = aiosqlite.Row
+        
+        # Enable WAL mode for better concurrent read/write
+        await self._connection.execute("PRAGMA journal_mode=WAL")
+        await self._connection.execute("PRAGMA busy_timeout=30000")  # 30s timeout
+        await self._connection.commit()
+        
         await self._init_schema()
     
     async def close(self) -> None:
