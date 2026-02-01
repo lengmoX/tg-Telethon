@@ -64,7 +64,7 @@ async def health_check():
     return {"status": "ok", "version": __version__}
 
 
-# Serve static files (frontend) in production
-static_dir = Path(__file__).parent / "static"
-if static_dir.exists():
-    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+# NOTE: Frontend is now served separately via Vite dev server
+# Run: cd web && npm run dev
+# Vite proxies /api requests to this backend automatically
+
