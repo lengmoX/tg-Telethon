@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from tgf import __version__
 from tgf.data.config import get_config
 
-from api.routers import rules, watcher, states, auth
+from api.routers import rules, watcher, states, auth, telegram
 
 
 @asynccontextmanager
@@ -46,6 +46,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["认证"])
+app.include_router(telegram.router, prefix="/api/telegram", tags=["Telegram 认证"])
 app.include_router(rules.router, prefix="/api/rules", tags=["规则管理"])
 app.include_router(watcher.router, prefix="/api/watcher", tags=["监听控制"])
 app.include_router(states.router, prefix="/api/states", tags=["同步状态"])

@@ -85,6 +85,29 @@ class LogsResponse(BaseModel):
     total: int
 
 
+# ============== Telegram Auth ==============
+
+class TelegramUser(BaseModel):
+    id: int
+    username: Optional[str]
+    first_name: Optional[str]
+    last_name: Optional[str]
+    phone: Optional[str]
+    is_premium: bool = False
+
+
+class TelegramAuthStatus(BaseModel):
+    logged_in: bool
+    state: str = Field(..., description="Current auth state: IDLE, QR_READY, WAITING_PASSWORD, SUCCESS, FAILED")
+    qr_url: Optional[str] = None
+    user: Optional[TelegramUser] = None
+    error: Optional[str] = None
+
+
+class TelegramPasswordRequest(BaseModel):
+    password: str
+
+
 # ============== Common ==============
 
 class MessageResponse(BaseModel):

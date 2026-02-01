@@ -142,6 +142,44 @@ export async function disableRule(id: number): Promise<Rule> {
   return fetchApi<Rule>(`/rules/${id}/disable`, { method: 'POST' });
 }
 
+// Telegram Auth API
+
+export interface TelegramUser {
+  id: number;
+  username: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  is_premium: boolean;
+}
+
+export interface TelegramAuthStatus {
+  logged_in: boolean;
+  state: 'IDLE' | 'QR_READY' | 'WAITING_PASSWORD' | 'SUCCESS' | 'FAILED';
+  qr_url: string | null;
+  user: TelegramUser | null;
+  error: string | null;
+}
+
+export async function getTelegramStatus(): Promise<TelegramAuthStatus> {
+  return fetchApi<TelegramAuthStatus>('/telegram/status');
+}
+
+export async function loginTelegram(): Promise<TelegramAuthStatus> {
+  return fetchApi<TelegramAuthStatus>('/telegram/login', { method: 'POST' });
+}
+
+export async function submitTelegramPassword(password: string): Promise<TelegramAuthStatus> {
+  return fetchApi<TelegramAuthStatus>('/telegram/password', {
+    method: 'POST',
+    body: JSON.stringify({ password }),
+  });
+}
+
+export async function logoutTelegram(): Promise<{ message: string }> {
+  return fetchApi('/telegram/logout', { method: 'POST' });
+}
+
 // Watcher API
 export async function getWatcherStatus(): Promise<WatcherStatus> {
   return fetchApi<WatcherStatus>('/watcher/status');
