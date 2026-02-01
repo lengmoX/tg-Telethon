@@ -182,8 +182,15 @@ def _start_daemon(config, namespace: str, rule_name: str | None):
     """Start watch as a background daemon process"""
     import sys
     
-    # Build command
-    cmd = [sys.executable, '-m', 'tgf', '-n', namespace, 'watch']
+    # Build command - detect if running from PyInstaller bundle
+    if getattr(sys, 'frozen', False):
+        # Running as PyInstaller bundle - use the executable directly
+        executable = sys.executable
+        cmd = [executable, '-n', namespace, 'watch']
+    else:
+        # Running as Python script
+        cmd = [sys.executable, '-m', 'tgf', '-n', namespace, 'watch']
+    
     if rule_name:
         cmd.append(rule_name)
     
