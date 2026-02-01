@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import QRCode from 'react-qr-code';
 import {
   getTelegramStatus,
@@ -8,39 +8,42 @@ import {
   type TelegramAuthStatus
 } from '@/api';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, RefreshCw, Smartphone, ShieldCheck, LogOut, CheckCircle2, AlertCircle, KeyRound, QrCode } from 'lucide-react';
-
+import {
+  Loader2,
+  RefreshCw,
+  Smartphone,
+  ShieldCheck,
+  LogOut,
+  CheckCircle2,
+  AlertCircle,
+  KeyRound,
+  QrCode,
+  User
+} from 'lucide-react';
 
 export function TelegramLogin() {
   const [status, setStatus] = useState<TelegramAuthStatus | null>(null);
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const pollInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchStatus = async () => {
-    try {
-      const data = await getTelegramStatus();
-      setStatus(data);
-      if (data.error) setError(data.error);
-    } catch (err) {
-      console.error(err);
-      // Don't show error on first fetch if it's just 404 (backwards compat)
-      // but here we expect 200.
-    }
-  };
-
+  // Fetch status only once on mount
   useEffect(() => {
-    fetchStatus();
-    pollInterval.current = setInterval(fetchStatus, 2000);
-    return () => {
-      if (pollInterval.current) clearInterval(pollInterval.current);
+    const fetchStatus = async () => {
+      try {
+        const data = await getTelegramStatus();
+        setStatus(data);
+        if (data.error) setError(data.error);
+      } catch (err) {
+        console.error(err);
+      }
     };
+    fetchStatus();
   }, []);
 
   const handleStartLogin = async () => {
@@ -49,11 +52,29 @@ export function TelegramLogin() {
     try {
       const data = await loginTelegram();
       setStatus(data);
+      // Start polling only when QR is ready
+      if (data.state === 'QR_READY') {
+        pollForLogin();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start login');
     } finally {
       setLoading(false);
     }
+  };
+
+  const pollForLogin = () => {
+    const interval = setInterval(async () => {
+      try {
+        const data = await getTelegramStatus();
+        setStatus(data);
+        if (data.state === 'SUCCESS' || data.state === 'WAITING_PASSWORD' || data.state === 'FAILED') {
+          clearInterval(interval);
+        }
+      } catch {
+        clearInterval(interval);
+      }
+    }, 2000);
   };
 
   const handleSubmitPassword = async (e: React.FormEvent) => {
@@ -64,18 +85,19 @@ export function TelegramLogin() {
       const data = await submitTelegramPassword(password);
       setStatus(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to submit password');
+      setError(err instanceof Error ? err.message : 'Password incorrect');
     } finally {
       setLoading(false);
     }
   };
 
   const handleLogout = async () => {
-    if (!confirm('Are you sure you want to logout?')) return;
+    if (!confirm('确定要断开连接吗？')) return;
     setLoading(true);
     try {
       await logoutTelegram();
-      await fetchStatus();
+      const data = await getTelegramStatus();
+      setStatus(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to logout');
     } finally {
@@ -83,174 +105,225 @@ export function TelegramLogin() {
     }
   };
 
+  const refreshStatus = async () => {
+    setLoading(true);
+    try {
+      const data = await getTelegramStatus();
+      setStatus(data);
+    } catch (err) {
+      setError('刷新失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!status) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="text-muted-foreground animate-pulse">连接服务器中...</p>
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
-  // State: Logged In
+  // Connected State
   if (status.logged_in && status.user) {
     return (
-      <div className="flex flex-col items-center justify-center py-10 fade-in animate-in zoom-in-95 duration-500">
-        <Card className="w-full max-w-md shadow-xl border-t-4 border-t-green-500">
-          <CardHeader className="text-center pb-2">
-            <div className="mx-auto h-16 w-16 bg-green-100 rounded-full flex items-center justify-center mb-4 ring-4 ring-green-50">
-              <CheckCircle2 className="h-8 w-8 text-green-600" />
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">账号连接</h2>
+          <p className="text-sm text-muted-foreground">管理您的 Telegram 账号连接状态</p>
+        </div>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+                <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+              </div>
+              <div>
+                <CardTitle className="text-base">已连接</CardTitle>
+                <CardDescription className="text-xs">Telegram 账号已成功关联</CardDescription>
+              </div>
             </div>
-            <CardTitle className="text-2xl">已连接 Telegram</CardTitle>
-            <CardDescription>您的账号正如预期般运行</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6 pt-6">
-            <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white shadow-lg">
-              <div className="absolute top-0 right-0 -mr-4 -mt-4 h-24 w-24 rounded-full bg-white/5 blur-xl" />
-              <div className="relative flex items-center gap-4">
-                <div className="h-16 w-16 rounded-full bg-blue-500/20 flex items-center justify-center text-xl font-bold border-2 border-white/10 shadow-inner backdrop-blur-sm">
-                  {status.user.first_name?.[0]}
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-4 rounded-lg border bg-muted/30 p-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-white font-semibold text-lg">
+                {status.user.first_name?.[0] || <User className="h-5 w-5" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-sm truncate">
+                    {status.user.first_name} {status.user.last_name}
+                  </p>
+                  {status.user.is_premium && (
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
+                      Premium
+                    </Badge>
+                  )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-bold truncate">
-                      {status.user.first_name} {status.user.last_name}
-                    </h3>
-                    {status.user.is_premium && (
-                      <Badge variant="secondary" className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-none py-0 px-1.5 h-5 text-[10px]">
-                        PREMIUM
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-slate-400 text-sm truncate">@{status.user.username || 'No Username'}</p>
-                  <p className="text-slate-500 text-xs mt-1 font-mono">ID: {status.user.id}</p>
-                </div>
+                <p className="text-xs text-muted-foreground truncate">
+                  @{status.user.username || 'No username'} · ID: {status.user.id}
+                </p>
               </div>
             </div>
 
-            <Button
-              variant="outline"
-              className="w-full text-red-500 hover:text-red-600 hover:bg-red-50 border-red-100 dark:border-red-900/30 dark:hover:bg-red-950/20"
-              onClick={handleLogout}
-              disabled={loading}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              断开连接
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={refreshStatus} disabled={loading}>
+                <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+                刷新
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/20"
+                onClick={handleLogout}
+                disabled={loading}
+              >
+                <LogOut className="mr-1.5 h-3.5 w-3.5" />
+                断开连接
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  // State: Waiting for Password (2FA)
+  // 2FA Password State
   if (status.state === 'WAITING_PASSWORD') {
     return (
-      <div className="flex justify-center py-10 animate-in slide-in-from-bottom-4 duration-500">
-        <Card className="w-full max-w-md shadow-lg border-t-4 border-t-orange-500">
-          <CardHeader className="text-center">
-            <div className="mx-auto h-12 w-12 bg-orange-100 rounded-full flex items-center justify-center mb-4">
-              <KeyRound className="h-6 w-6 text-orange-600" />
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">两步验证</h2>
+          <p className="text-sm text-muted-foreground">您的账号已启用云密码保护</p>
+        </div>
+
+        <Card className="max-w-md">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-900/30">
+                <KeyRound className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+              </div>
+              <div>
+                <CardTitle className="text-base">输入云密码</CardTitle>
+                <CardDescription className="text-xs">请输入您的 Telegram 两步验证密码</CardDescription>
+              </div>
             </div>
-            <CardTitle>两步验证</CardTitle>
-            <CardDescription>您的账号受云密码保护，请验证身份</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmitPassword} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="2fa-password">云密码</Label>
+                <Label htmlFor="password" className="text-xs">云密码</Label>
                 <div className="relative">
+                  <ShieldCheck className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
-                    id="2fa-password"
+                    id="password"
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter your Global Password"
-                    className="pl-10"
+                    placeholder="输入密码..."
+                    className="pl-9 h-9 text-sm"
                     autoFocus
                     required
                   />
-                  <ShieldCheck className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                 </div>
-                <p className="text-xs text-muted-foreground">如果您忘记了密码，请在手机端重置。</p>
               </div>
 
               {error && (
-                <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-2">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>验证失败</AlertTitle>
-                  <AlertDescription>{error}</AlertDescription>
+                <Alert variant="destructive" className="py-2">
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  <AlertDescription className="text-xs ml-2">{error}</AlertDescription>
                 </Alert>
               )}
 
-              <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700" disabled={loading}>
-                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
-                提交验证
-              </Button>
+              <div className="flex gap-2">
+                <Button type="submit" size="sm" disabled={loading}>
+                  {loading && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                  验证
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => window.location.reload()}
+                >
+                  取消
+                </Button>
+              </div>
             </form>
           </CardContent>
-          <CardFooter className="justify-center border-t py-4 bg-gray-50 dark:bg-gray-900/50">
-            <Button variant="link" size="sm" onClick={() => window.location.reload()} className="text-muted-foreground">
-              取消并重试
-            </Button>
-          </CardFooter>
         </Card>
       </div>
     );
   }
 
-  // State: QR Code
+  // Login / QR Code State
   return (
-    <div className="flex justify-center py-10 animate-in fade-in duration-700">
-      <Card className="w-full max-w-md shadow-xl border-t-4 border-t-blue-500">
-        <CardHeader className="text-center pb-2">
-          <CardTitle className="text-2xl flex items-center justify-center gap-2">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg" alt="TG" className="h-8 w-8" />
-            登录 Telegram
-          </CardTitle>
-          <CardDescription>连接您的账号以管理转发规则</CardDescription>
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight">账号连接</h2>
+        <p className="text-sm text-muted-foreground">连接您的 Telegram 账号以启用消息转发</p>
+      </div>
+
+      <Card className="max-w-md">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
+              <Smartphone className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <CardTitle className="text-base">扫码登录</CardTitle>
+              <CardDescription className="text-xs">使用 Telegram 手机端扫描二维码</CardDescription>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-6 pt-6">
+        <CardContent className="space-y-4">
           {error && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
+            <Alert variant="destructive" className="py-2">
+              <AlertCircle className="h-3.5 w-3.5" />
+              <AlertDescription className="text-xs ml-2">{error}</AlertDescription>
             </Alert>
           )}
 
           {status.state === 'QR_READY' && status.qr_url ? (
-            <div className="flex flex-col items-center space-y-6 animate-in zoom-in-95 duration-300">
-              <div className="relative group">
-                <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-lg blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
-                <div className="relative p-4 bg-white rounded-lg shadow-sm border ring-1 ring-gray-900/5">
-                  <QRCode value={status.qr_url} size={220} />
-                </div>
+            <div className="space-y-4">
+              <div className="flex justify-center p-4 bg-white rounded-lg border">
+                <QRCode value={status.qr_url} size={180} />
               </div>
 
-              <div className="text-center space-y-2">
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100">请使用 Telegram 手机端扫码</h3>
-                <ol className="text-sm text-gray-500 text-left inline-block space-y-1 bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border">
-                  <li>1. 打开 Telegram 设置 (Settings)</li>
-                  <li>2. 点击 设备 (Devices)</li>
-                  <li>3. 点击 连接桌面设备 (Link Desktop Device)</li>
+              <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">
+                <p className="font-medium text-foreground">扫码步骤：</p>
+                <ol className="list-decimal list-inside space-y-0.5">
+                  <li>打开 Telegram 手机端</li>
+                  <li>进入 设置 → 设备</li>
+                  <li>点击 "连接桌面设备"</li>
                 </ol>
               </div>
 
-              <div className="flex items-center gap-2 text-xs text-blue-500 bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5 rounded-full animate-pulse">
-                <Smartphone className="h-3 w-3" />
-                等待扫码确认...
+              <div className="flex items-center justify-center gap-2 text-xs text-blue-600 dark:text-blue-400">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                等待扫码...
               </div>
             </div>
           ) : (
-            <div className="text-center py-10 space-y-6">
-              <div className="mx-auto h-24 w-24 bg-blue-50 dark:bg-blue-900/20 rounded-full flex items-center justify-center">
-                <QrCode className="h-12 w-12 text-blue-500" />
+            <div className="space-y-4">
+              <div className="flex justify-center py-6">
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted">
+                  <QrCode className="h-10 w-10 text-muted-foreground" />
+                </div>
               </div>
-              <p className="text-gray-500 px-6">
-                点击下方按钮生成登录二维码。您需要使用手机端 Telegram App 进行扫码授权。
+
+              <p className="text-xs text-center text-muted-foreground">
+                点击下方按钮生成登录二维码
               </p>
-              <Button onClick={handleStartLogin} disabled={loading} size="lg" className="w-full bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/20">
-                {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <RefreshCw className="mr-2 h-5 w-5" />}
+
+              <Button onClick={handleStartLogin} disabled={loading} className="w-full" size="sm">
+                {loading ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <QrCode className="mr-1.5 h-3.5 w-3.5" />
+                )}
                 生成二维码
               </Button>
             </div>

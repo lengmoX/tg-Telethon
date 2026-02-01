@@ -6,6 +6,17 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
+  Activity,
+  RefreshCw,
+  Play,
+  Square,
+  Loader2,
+  AlertCircle,
+  ArrowRight,
+  Shield,
+  MessageSquare
+} from 'lucide-react';
+import {
   getWatcherStatus,
   startWatcher,
   stopWatcher,
@@ -13,7 +24,6 @@ import {
   getStates,
   enableRule,
   disableRule,
-  clearToken,
   type WatcherStatus,
   type Rule,
   type State,
@@ -23,7 +33,7 @@ interface DashboardProps {
   onLogout: () => void;
 }
 
-export function Dashboard({ onLogout }: DashboardProps) {
+export function Dashboard({ onLogout: _onLogout }: DashboardProps) {
   const [watcherStatus, setWatcherStatus] = useState<WatcherStatus | null>(null);
   const [rules, setRules] = useState<Rule[]>([]);
   const [states, setStates] = useState<State[]>([]);
@@ -51,9 +61,6 @@ export function Dashboard({ onLogout }: DashboardProps) {
 
   useEffect(() => {
     fetchData();
-    // Auto refresh every 30 seconds
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
   }, []);
 
   const handleStartStop = async () => {
@@ -85,126 +92,135 @@ export function Dashboard({ onLogout }: DashboardProps) {
     }
   };
 
-  const handleLogout = () => {
-    clearToken();
-    onLogout();
-  };
-
   const getStateForRule = (ruleId: number): State | undefined => {
     return states.find((s) => s.rule_id === ruleId);
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-lg">加载中...</div>
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
+  const totalForwarded = states.reduce((sum, s) => sum + s.total_forwarded, 0);
+  const enabledRules = rules.filter((r) => r.enabled).length;
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Header */}
-      <header className="bg-white dark:bg-gray-800 shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-            TGF 管理面板
-          </h1>
-          <Button variant="ghost" onClick={handleLogout}>
-            退出登录
-          </Button>
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">概览</h2>
+          <p className="text-sm text-muted-foreground">监控转发服务状态和规则</p>
         </div>
-      </header>
+        <Button variant="outline" size="sm" onClick={fetchData}>
+          <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+          刷新
+        </Button>
+      </div>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8 space-y-6">
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
+      {error && (
+        <Alert variant="destructive" className="py-2">
+          <AlertCircle className="h-3.5 w-3.5" />
+          <AlertDescription className="text-xs ml-2">{error}</AlertDescription>
+        </Alert>
+      )}
 
-        {/* Status Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Watcher Status */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-500">监听器状态</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`w-3 h-3 rounded-full ${watcherStatus?.running ? 'bg-green-500' : 'bg-gray-300'
-                      }`}
-                  />
-                  <span className="text-2xl font-bold">
-                    {watcherStatus?.running ? '运行中' : '已停止'}
-                  </span>
-                </div>
-                <Button
-                  variant={watcherStatus?.running ? 'destructive' : 'default'}
-                  onClick={handleStartStop}
-                  disabled={actionLoading}
-                >
-                  {actionLoading ? '...' : watcherStatus?.running ? '停止' : '启动'}
-                </Button>
-              </div>
-              {watcherStatus?.pid && (
-                <p className="text-xs text-gray-500 mt-2">PID: {watcherStatus.pid}</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Rules Count */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-500">规则数量</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{rules.length}</div>
-              <p className="text-xs text-gray-500">
-                {rules.filter((r) => r.enabled).length} 个启用
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Total Forwarded */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-500">已转发消息</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {states.reduce((sum, s) => sum + s.total_forwarded, 0)}
-              </div>
-              <p className="text-xs text-gray-500">总计</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Rules Table */}
+      {/* Stats Cards */}
+      <div className="grid gap-4 md:grid-cols-3">
+        {/* Watcher Status */}
         <Card>
-          <CardHeader>
-            <CardTitle>转发规则</CardTitle>
-            <CardDescription>管理消息转发规则</CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">服务状态</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {rules.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                暂无规则，请通过 CLI 添加: tgf rule add --name xxx -s source -t target
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className={`h-2 w-2 rounded-full ${watcherStatus?.running ? 'bg-green-500' : 'bg-gray-300'}`} />
+                <span className="text-xl font-bold">
+                  {watcherStatus?.running ? '运行中' : '已停止'}
+                </span>
               </div>
-            ) : (
+              <Button
+                variant={watcherStatus?.running ? 'outline' : 'default'}
+                size="sm"
+                onClick={handleStartStop}
+                disabled={actionLoading}
+              >
+                {actionLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : watcherStatus?.running ? (
+                  <>
+                    <Square className="mr-1 h-3 w-3" />
+                    停止
+                  </>
+                ) : (
+                  <>
+                    <Play className="mr-1 h-3 w-3" />
+                    启动
+                  </>
+                )}
+              </Button>
+            </div>
+            {watcherStatus?.pid && (
+              <p className="text-xs text-muted-foreground mt-2">PID: {watcherStatus.pid}</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Rules Count */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">转发规则</CardTitle>
+            <Shield className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold">{rules.length}</div>
+            <p className="text-xs text-muted-foreground">
+              {enabledRules} 个已启用
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Total Forwarded */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">已转发消息</CardTitle>
+            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold">{totalForwarded.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">总计</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Rules Table */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">转发规则</CardTitle>
+          <CardDescription className="text-xs">管理消息转发规则配置</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {rules.length === 0 ? (
+            <div className="text-center py-8 text-sm text-muted-foreground">
+              暂无规则，请通过 CLI 添加: <code className="bg-muted px-1 py-0.5 rounded text-xs">tgf rule add</code>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>名称</TableHead>
-                    <TableHead>来源 → 目标</TableHead>
-                    <TableHead>模式</TableHead>
-                    <TableHead>间隔</TableHead>
-                    <TableHead>已转发</TableHead>
-                    <TableHead>最后同步</TableHead>
-                    <TableHead>状态</TableHead>
+                    <TableHead className="text-xs">名称</TableHead>
+                    <TableHead className="text-xs">路由</TableHead>
+                    <TableHead className="text-xs">模式</TableHead>
+                    <TableHead className="text-xs">间隔</TableHead>
+                    <TableHead className="text-xs">已转发</TableHead>
+                    <TableHead className="text-xs">最后同步</TableHead>
+                    <TableHead className="text-xs w-16">启用</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -212,21 +228,34 @@ export function Dashboard({ onLogout }: DashboardProps) {
                     const state = getStateForRule(rule.id);
                     return (
                       <TableRow key={rule.id}>
-                        <TableCell className="font-medium">{rule.name}</TableCell>
-                        <TableCell className="text-sm text-gray-500">
-                          {rule.source_chat} → {rule.target_chat}
+                        <TableCell className="font-medium text-sm">{rule.name}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <span className="truncate max-w-[100px]" title={rule.source_chat}>
+                              {rule.source_chat}
+                            </span>
+                            <ArrowRight className="h-3 w-3 shrink-0" />
+                            <span className="truncate max-w-[100px]" title={rule.target_chat}>
+                              {rule.target_chat}
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={rule.mode === 'clone' ? 'default' : 'secondary'}>
+                          <Badge variant={rule.mode === 'clone' ? 'default' : 'secondary'} className="text-[10px] px-1.5 py-0">
                             {rule.mode}
                           </Badge>
                         </TableCell>
-                        <TableCell>{rule.interval_min} 分钟</TableCell>
-                        <TableCell>{state?.total_forwarded || 0}</TableCell>
-                        <TableCell className="text-sm text-gray-500">
+                        <TableCell className="text-xs text-muted-foreground">{rule.interval_min}m</TableCell>
+                        <TableCell className="text-sm">{state?.total_forwarded || 0}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
                           {state?.last_sync_at
-                            ? new Date(state.last_sync_at).toLocaleString('zh-CN')
-                            : '从未'}
+                            ? new Date(state.last_sync_at).toLocaleString('zh-CN', {
+                              month: 'numeric',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })
+                            : '-'}
                         </TableCell>
                         <TableCell>
                           <Switch
@@ -239,10 +268,10 @@ export function Dashboard({ onLogout }: DashboardProps) {
                   })}
                 </TableBody>
               </Table>
-            )}
-          </CardContent>
-        </Card>
-      </main>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
