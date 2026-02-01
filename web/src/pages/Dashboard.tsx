@@ -112,8 +112,8 @@ export function Dashboard({ onLogout: _onLogout }: DashboardProps) {
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight">概览</h2>
-          <p className="text-sm text-muted-foreground">监控转发服务状态和规则</p>
+          <h2 className="text-xl font-semibold tracking-tight">概览</h2>
+          <p className="text-muted-foreground">监控转发服务状态和规则</p>
         </div>
         <Button variant="outline" size="sm" onClick={fetchData}>
           <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
@@ -122,9 +122,9 @@ export function Dashboard({ onLogout: _onLogout }: DashboardProps) {
       </div>
 
       {error && (
-        <Alert variant="destructive" className="py-2">
-          <AlertCircle className="h-3.5 w-3.5" />
-          <AlertDescription className="text-xs ml-2">{error}</AlertDescription>
+        <Alert variant="destructive" className="py-3">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription className="text-sm ml-2">{error}</AlertDescription>
         </Alert>
       )}
 
@@ -133,14 +133,14 @@ export function Dashboard({ onLogout: _onLogout }: DashboardProps) {
         {/* Watcher Status */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">服务状态</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">服务状态</CardTitle>
+            <Activity className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className={`h-2 w-2 rounded-full ${watcherStatus?.running ? 'bg-green-500' : 'bg-gray-300'}`} />
-                <span className="text-xl font-bold">
+                <div className={`h-2.5 w-2.5 rounded-full ${watcherStatus?.running ? 'bg-green-500' : 'bg-gray-300'}`} />
+                <span className="text-2xl font-bold">
                   {watcherStatus?.running ? '运行中' : '已停止'}
                 </span>
               </div>
@@ -166,7 +166,7 @@ export function Dashboard({ onLogout: _onLogout }: DashboardProps) {
               </Button>
             </div>
             {watcherStatus?.pid && (
-              <p className="text-xs text-muted-foreground mt-2">PID: {watcherStatus.pid}</p>
+              <p className="text-sm text-muted-foreground mt-2">PID: {watcherStatus.pid}</p>
             )}
           </CardContent>
         </Card>
@@ -174,12 +174,12 @@ export function Dashboard({ onLogout: _onLogout }: DashboardProps) {
         {/* Rules Count */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">转发规则</CardTitle>
-            <Shield className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">转发规则</CardTitle>
+            <Shield className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-xl font-bold">{rules.length}</div>
-            <p className="text-xs text-muted-foreground">
+            <div className="text-2xl font-bold">{rules.length}</div>
+            <p className="text-sm text-muted-foreground">
               {enabledRules} 个已启用
             </p>
           </CardContent>
@@ -188,12 +188,12 @@ export function Dashboard({ onLogout: _onLogout }: DashboardProps) {
         {/* Total Forwarded */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">已转发消息</CardTitle>
-            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">已转发消息</CardTitle>
+            <MessageSquare className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-xl font-bold">{totalForwarded.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">总计</p>
+            <div className="text-2xl font-bold">{totalForwarded.toLocaleString()}</div>
+            <p className="text-sm text-muted-foreground">总计</p>
           </CardContent>
         </Card>
       </div>
@@ -201,25 +201,25 @@ export function Dashboard({ onLogout: _onLogout }: DashboardProps) {
       {/* Rules Table */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">转发规则</CardTitle>
-          <CardDescription className="text-xs">管理消息转发规则配置</CardDescription>
+          <CardTitle className="text-lg">转发规则</CardTitle>
+          <CardDescription>管理消息转发规则配置</CardDescription>
         </CardHeader>
         <CardContent>
           {rules.length === 0 ? (
-            <div className="text-center py-8 text-sm text-muted-foreground">
-              暂无规则，请通过 CLI 添加: <code className="bg-muted px-1 py-0.5 rounded text-xs">tgf rule add</code>
+            <div className="text-center py-8 text-muted-foreground">
+              暂无规则，请通过 CLI 添加: <code className="bg-muted px-1.5 py-1 rounded text-sm">tgf rule add</code>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-xs">名称</TableHead>
-                    <TableHead className="text-xs">路由</TableHead>
-                    <TableHead className="text-xs">模式</TableHead>
-                    <TableHead className="text-xs">间隔</TableHead>
-                    <TableHead className="text-xs">已转发</TableHead>
-                    <TableHead className="text-xs">最后同步</TableHead>
+                    <TableHead>名称</TableHead>
+                    <TableHead>路由</TableHead>
+                    <TableHead>模式</TableHead>
+                    <TableHead>间隔</TableHead>
+                    <TableHead>已转发</TableHead>
+                    <TableHead>最后同步</TableHead>
                     <TableHead className="text-xs w-16">启用</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -241,13 +241,13 @@ export function Dashboard({ onLogout: _onLogout }: DashboardProps) {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={rule.mode === 'clone' ? 'default' : 'secondary'} className="text-[10px] px-1.5 py-0">
+                          <Badge variant={rule.mode === 'clone' ? 'default' : 'secondary'} className="text-xs px-2 py-0.5">
                             {rule.mode}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{rule.interval_min}m</TableCell>
-                        <TableCell className="text-sm">{state?.total_forwarded || 0}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
+                        <TableCell className="text-muted-foreground">{rule.interval_min}m</TableCell>
+                        <TableCell>{state?.total_forwarded || 0}</TableCell>
+                        <TableCell className="text-muted-foreground">
                           {state?.last_sync_at
                             ? new Date(state.last_sync_at).toLocaleString('zh-CN', {
                               month: 'numeric',

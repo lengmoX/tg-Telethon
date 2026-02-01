@@ -41,12 +41,12 @@ export function Layout({ onLogout }: LayoutProps) {
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="flex h-14 items-center border-b px-4">
-        <Link to="/dashboard" className="flex items-center gap-2 font-semibold">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Shield className="h-4 w-4" />
+      <div className="flex h-16 items-center border-b px-4">
+        <Link to="/dashboard" className="flex items-center gap-2.5 font-semibold">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            <Shield className="h-5 w-5" />
           </div>
-          <span className="text-sm">TGF Admin</span>
+          <span>TGF Admin</span>
         </Link>
       </div>
 
@@ -65,17 +65,17 @@ export function Layout({ onLogout }: LayoutProps) {
                     else setOpen(false);
                   }}
                   className={cn(
-                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                    "flex items-center gap-3 rounded-md px-3 py-2.5 transition-colors",
                     isActive
                       ? "bg-accent text-accent-foreground font-medium"
                       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                     item.disabled && "opacity-50 cursor-not-allowed"
                   )}
                 >
-                  <item.icon className="h-4 w-4" />
+                  <item.icon className="h-5 w-5" />
                   <span className="flex-1">{item.title}</span>
                   {item.disabled && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                       DEV
                     </span>
                   )}
@@ -95,8 +95,8 @@ export function Layout({ onLogout }: LayoutProps) {
           className="w-full justify-start text-muted-foreground hover:text-destructive"
           onClick={handleLogout}
         >
-          <LogOut className="mr-2 h-4 w-4" />
-          <span className="text-sm">退出登录</span>
+          <LogOut className="mr-2 h-5 w-5" />
+          <span>退出登录</span>
         </Button>
       </div>
     </div>
@@ -105,7 +105,7 @@ export function Layout({ onLogout }: LayoutProps) {
   return (
     <div className="flex min-h-screen">
       {/* Desktop Sidebar */}
-      <aside className="hidden w-56 border-r bg-background md:block">
+      <aside className="hidden w-60 border-r bg-background md:block">
         <SidebarContent />
       </aside>
 
@@ -123,8 +123,8 @@ export function Layout({ onLogout }: LayoutProps) {
             </SheetContent>
           </Sheet>
           <div className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-primary" />
-            <span className="font-semibold text-sm">TGF Admin</span>
+            <Shield className="h-6 w-6 text-primary" />
+            <span className="font-semibold">TGF Admin</span>
           </div>
         </header>
 

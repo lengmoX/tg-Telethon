@@ -117,7 +117,15 @@
   * {
     @apply border-border outline-ring/50;
   }
+
+  html {
+    font-size: 16px;
+    /* Base font size */
+  }
+
   body {
     @apply bg-background text-foreground;
+    font-size: 1rem;
+    line-height: 1.6;
   }
 }
