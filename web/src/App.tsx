@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { LoginPage, Dashboard, TelegramLogin } from '@/pages';
+import { LoginPage, Dashboard, TelegramLogin, RulesPage } from '@/pages';
 import { Layout } from '@/components';
 import { isAuthenticated } from '@/api';
 import { useState } from 'react';
@@ -32,7 +32,7 @@ function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard onLogout={() => setAuth(false)} />} />
           <Route path="telegram" element={<TelegramLogin />} />
-          <Route path="rules" element={<div className="p-4">Rules Management Coming Soon</div>} />
+          <Route path="rules" element={<RulesPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
