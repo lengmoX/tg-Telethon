@@ -1,10 +1,28 @@
 /**
- * API Client for TGF Backend
+ * TGF API Client
+ * 
+ * HTTP client for communicating with the FastAPI backend.
+ * 
+ * Features:
+ * - JWT token authentication (stored in localStorage)
+ * - Automatic token injection in request headers
+ * - Automatic redirect to login on 401 responses
+ * - Type-safe API functions for all endpoints
+ * 
+ * API Endpoints:
+ * - /api/auth/* - Authentication (login)
+ * - /api/rules/* - Rule CRUD operations
+ * - /api/watcher/* - Watcher control (start/stop/status)
+ * - /api/telegram/* - Telegram account connection
+ * - /api/states/* - Sync state information
+ * - /api/health - Health check
  */
 
 const API_BASE = '/api';
 
-// Types
+// ============================================================
+// Type Definitions
+// ============================================================
 export interface Rule {
   id: number;
   name: string;

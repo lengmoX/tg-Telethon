@@ -1,17 +1,45 @@
+/**
+ * TGF Web - Main Application Component
+ * 
+ * This is the root component that handles:
+ * - Application-wide authentication state
+ * - Route definitions and protection
+ * - Layout structure with sidebar navigation
+ * 
+ * Route Structure:
+ * - /login - Public login page (redirects to /dashboard if authenticated)
+ * - / - Protected routes (requires authentication)
+ *   - /dashboard - Main dashboard with watcher status and rules overview
+ *   - /rules - Rule management with CRUD operations
+ *   - /telegram - Telegram account connection (QR login)
+ *   - /* - 404 catch-all for unknown routes
+ */
+
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { LoginPage, Dashboard, TelegramLogin, RulesPage } from '@/pages';
+import { LoginPage, Dashboard, TelegramLogin, RulesPage, NotFound } from '@/pages';
 import { Layout } from '@/components';
 import { isAuthenticated } from '@/api';
 import { useState } from 'react';
 
 
-
+/**
+ * Main App Component
+ * 
+ * Manages authentication state and renders appropriate routes.
+ * Uses react-router-dom for client-side routing.
+ */
 function App() {
+  // Authentication state - persisted in localStorage via API client
   const [auth, setAuth] = useState(isAuthenticated());
 
   return (
     <BrowserRouter>
       <Routes>
+        {/* 
+          Public Route: Login Page
+          - Accessible only when not authenticated
+          - Redirects to dashboard if already logged in
+        */}
         <Route
           path="/login"
           element={
@@ -19,6 +47,11 @@ function App() {
           }
         />
 
+        {/* 
+          Protected Routes: Requires Authentication
+          - All child routes are wrapped in Layout component
+          - Redirects to /login if not authenticated
+        */}
         <Route
           path="/"
           element={
@@ -29,11 +62,27 @@ function App() {
             )
           }
         >
+          {/* Default redirect to dashboard */}
           <Route index element={<Navigate to="/dashboard" replace />} />
+
+          {/* Dashboard - System overview and watcher control */}
           <Route path="dashboard" element={<Dashboard onLogout={() => setAuth(false)} />} />
+
+          {/* Telegram - Account connection via QR code */}
           <Route path="telegram" element={<TelegramLogin />} />
+
+          {/* Rules - CRUD management for forwarding rules */}
           <Route path="rules" element={<RulesPage />} />
+
+          {/* 404 Catch-all - Handle unknown routes */}
+          <Route path="*" element={<NotFound />} />
         </Route>
+
+        {/* 
+          Global 404 - For unauthenticated users accessing unknown routes
+          Redirects to login page
+        */}
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>
   );
