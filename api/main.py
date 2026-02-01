@@ -15,6 +15,7 @@ from tgf import __version__
 from tgf.data.config import get_config
 
 from api.routers import rules, watcher, states, auth, telegram
+from api.services.watcher_manager import get_watcher_manager
 
 
 @asynccontextmanager
@@ -24,8 +25,13 @@ async def lifespan(app: FastAPI):
     config = get_config()
     app.state.config = config
     yield
-    # Shutdown
-    pass
+    # Shutdown - stop watcher gracefully
+    try:
+        manager = get_watcher_manager(config)
+        if manager.is_running:
+            await manager.stop()
+    except Exception:
+        pass  # Ignore errors during shutdown
 
 
 app = FastAPI(
