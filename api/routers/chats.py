@@ -5,10 +5,14 @@ Provides API endpoints for:
 - Listing all dialogs/chats
 - Exporting messages from a specific chat to JSON
 - Downloading exported files
+
+Note: Each request creates a new Telegram connection, which takes 2-5 seconds.
+This is expected behavior due to Telegram's protocol requirements.
 """
 
 import json
-import asyncio
+import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -27,6 +31,9 @@ from api.deps import get_api_config, get_current_user
 from tgf.core.client import TGClient
 from tgf.core.media import MediaHandler
 from tgf.data.config import Config
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -61,21 +68,24 @@ def _message_to_dict(msg, media_handler: MediaHandler, with_content: bool) -> di
     
     # Media info
     if msg.media:
-        media_info = media_handler.get_media_info(msg)
-        if media_info:
-            data["media"] = {
-                "type": media_info.type,
-                "size": media_info.size,
-                "filename": media_info.filename,
-                "mime_type": media_info.mime_type,
-            }
-            if media_info.duration:
-                data["media"]["duration"] = media_info.duration
-            if media_info.width and media_info.height:
-                data["media"]["dimensions"] = {
-                    "width": media_info.width,
-                    "height": media_info.height
+        try:
+            media_info = media_handler.get_media_info(msg)
+            if media_info:
+                data["media"] = {
+                    "type": media_info.type,
+                    "size": media_info.size,
+                    "filename": media_info.filename,
+                    "mime_type": media_info.mime_type,
                 }
+                if media_info.duration:
+                    data["media"]["duration"] = media_info.duration
+                if media_info.width and media_info.height:
+                    data["media"]["dimensions"] = {
+                        "width": media_info.width,
+                        "height": media_info.height
+                    }
+        except Exception as e:
+            logger.warning(f"Failed to get media info for message {msg.id}: {e}")
     
     return data
 
@@ -92,10 +102,20 @@ async def list_chats(
     
     Returns a list of all accessible chats with their basic information.
     Supports filtering by chat type (user, group, channel).
+    
+    Note: This takes 2-5 seconds as it connects to Telegram servers.
     """
+    start_time = time.time()
+    logger.info(f"Fetching chat list (limit={limit}, type={chat_type})")
+    
     try:
         async with TGClient(config) as client:
+            connect_time = time.time()
+            logger.debug(f"Connected to Telegram in {connect_time - start_time:.2f}s")
+            
             dialogs = await client.get_dialogs(limit=limit)
+            fetch_time = time.time()
+            logger.debug(f"Fetched {len(dialogs)} dialogs in {fetch_time - connect_time:.2f}s")
             
             # Filter by type
             if chat_type != "all":
@@ -122,9 +142,13 @@ async def list_chats(
                     last_message_date=d.date.isoformat() if d.date else None,
                 ))
             
+            total_time = time.time() - start_time
+            logger.info(f"Returning {len(chats)} chats in {total_time:.2f}s")
+            
             return ChatListResponse(chats=chats, total=len(chats))
             
     except Exception as e:
+        logger.error(f"Failed to list chats: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to list chats: {str(e)}")
 
 
@@ -140,6 +164,9 @@ async def export_chat(
     Exports messages from the specified chat with various filtering options.
     Returns the filename which can be downloaded via /export/download/{filename}.
     """
+    start_time = time.time()
+    logger.info(f"Starting export for chat: {request.chat} (limit={request.limit}, type={request.msg_type})")
+    
     try:
         async with TGClient(config) as client:
             media_handler = MediaHandler(client)
@@ -147,7 +174,9 @@ async def export_chat(
             # Resolve chat entity
             try:
                 entity = await client.get_entity(request.chat)
+                logger.debug(f"Resolved chat entity: {entity.id}")
             except Exception as e:
+                logger.warning(f"Chat not found: {request.chat} - {e}")
                 raise HTTPException(status_code=404, detail=f"Chat not found: {str(e)}")
             
             # Prepare iterator args
@@ -161,6 +190,8 @@ async def export_chat(
             
             messages = []
             count = 0
+            
+            logger.debug(f"Iterating messages with kwargs: {iter_kwargs}")
             
             async for msg in client.iter_messages(entity, **iter_kwargs):
                 # Filter by type
@@ -181,6 +212,11 @@ async def export_chat(
                 messages.append(msg_data)
                 
                 count += 1
+                
+                # Log progress every 100 messages
+                if count % 100 == 0:
+                    logger.debug(f"Exported {count} messages...")
+                
                 if request.limit and count >= request.limit:
                     break
             
@@ -206,6 +242,9 @@ async def export_chat(
             with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(export_data, f, ensure_ascii=False, indent=2)
             
+            total_time = time.time() - start_time
+            logger.info(f"Export complete: {len(messages)} messages to {filename} in {total_time:.2f}s")
+            
             return ExportResponse(
                 success=True,
                 message_count=len(messages),
@@ -216,6 +255,7 @@ async def export_chat(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Export failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 
 
@@ -229,13 +269,17 @@ async def download_export(
     
     Returns the exported file for download.
     """
+    logger.debug(f"Download request for: {filename}")
+    
     # Security: only allow .json files from EXPORT_DIR
     if not filename.endswith('.json') or '..' in filename or '/' in filename or '\\' in filename:
+        logger.warning(f"Invalid filename attempted: {filename}")
         raise HTTPException(status_code=400, detail="Invalid filename")
     
     file_path = EXPORT_DIR / filename
     
     if not file_path.exists():
+        logger.warning(f"Export file not found: {filename}")
         raise HTTPException(status_code=404, detail="Export file not found")
     
     return FileResponse(
@@ -263,5 +307,7 @@ async def list_exports(
     
     # Sort by creation time, newest first
     exports.sort(key=lambda x: x["created_at"], reverse=True)
+    
+    logger.debug(f"Found {len(exports)} export files")
     
     return {"exports": exports, "total": len(exports)}

@@ -4,6 +4,7 @@ TGF Web API - FastAPI Backend
 RESTful API for managing TGF forwarding rules and watcher.
 """
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -16,6 +17,21 @@ from tgf.data.config import get_config
 
 from api.routers import rules, watcher, states, auth, telegram, chats
 from api.services.watcher_manager import get_watcher_manager
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# Set log levels for specific modules
+logging.getLogger("api.routers.chats").setLevel(logging.DEBUG)
+logging.getLogger("tgf").setLevel(logging.INFO)
+# Reduce noise from telethon
+logging.getLogger("telethon").setLevel(logging.WARNING)
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
