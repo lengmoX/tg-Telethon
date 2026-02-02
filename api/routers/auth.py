@@ -1,31 +1,66 @@
-"""
-Authentication Router
-"""
+from fastapi import APIRouter, HTTPException, status, Depends
+from tgf.data.database import Database
 
-from fastapi import APIRouter, HTTPException, status
-
-from api.schemas import LoginRequest, TokenResponse, MessageResponse
-from api.deps import verify_password, create_token, revoke_token
+from api.schemas import LoginRequest, TokenResponse, MessageResponse, UserCreate, AuthStatus
+from api.deps import verify_password, create_token, revoke_token, get_db, get_password_hash
 
 
 router = APIRouter()
 
 
-@router.post("/login", response_model=TokenResponse)
-async def login(request: LoginRequest):
+@router.get("/status", response_model=AuthStatus)
+async def auth_status(db: Database = Depends(get_db)):
+    """Check if the system is initialized (has users)"""
+    count = await db.count_users()
+    return AuthStatus(
+        initialized=count > 0,
+        need_setup=count == 0
+    )
+
+
+@router.post("/setup", response_model=TokenResponse)
+async def setup_admin(request: UserCreate, db: Database = Depends(get_db)):
     """
-    Login with password and get access token
-    
-    Password is configured via TGF_WEB_PASSWORD environment variable.
-    Default password is 'admin'.
+    Initialize system by creating the first admin user.
+    Only allowed when no users exist.
     """
-    if not verify_password(request.password):
+    count = await db.count_users()
+    if count > 0:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect password"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="System already initialized"
         )
     
-    token = create_token()
+    hashed_pw = get_password_hash(request.password)
+    username = request.username.strip()
+    
+    if not username or len(username) < 3:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username must be at least 3 characters"
+        )
+
+    await db.create_user(username, hashed_pw, is_admin=True)
+    
+    # Auto login
+    token = create_token(username)
+    return TokenResponse(access_token=token)
+
+
+@router.post("/login", response_model=TokenResponse)
+async def login(request: LoginRequest, db: Database = Depends(get_db)):
+    """
+    Login with username and password and get access token
+    """
+    user = await db.get_user(request.username)
+    
+    if not user or not verify_password(request.password, user["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password"
+        )
+    
+    token = create_token(user["username"])
     return TokenResponse(access_token=token)
 
 

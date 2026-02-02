@@ -132,6 +132,22 @@ class Database:
             
             await self._connection.commit()
     
+    # ============ User Management ============
+            
+            # Create users table
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username        TEXT NOT NULL UNIQUE,
+                    password_hash   TEXT NOT NULL,
+                    is_admin        INTEGER DEFAULT 0,
+                    created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at      TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            await self._connection.commit()
+    
     # ============ Rule CRUD Operations ============
     
     async def create_rule(
@@ -370,6 +386,38 @@ class Database:
             await cursor.execute("DELETE FROM global_filters WHERE id = ?", (filter_id,))
             await self._connection.commit()
             return cursor.rowcount > 0
+
+    # ============ User Management Operations ============
+    
+    async def create_user(
+        self,
+        username: str,
+        password_hash: str,
+        is_admin: bool = False
+    ) -> int:
+        """Create a new user"""
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("""
+                INSERT INTO users (username, password_hash, is_admin)
+                VALUES (?, ?, ?)
+            """, (username, password_hash, int(is_admin)))
+            await self._connection.commit()
+            return cursor.lastrowid
+            
+    async def get_user(self, username: str) -> Optional[Dict[str, Any]]:
+        """Get user by username"""
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+            
+    async def count_users(self) -> int:
+        """Count total users"""
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("SELECT COUNT(*) FROM users")
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
 
 
 # Synchronous wrapper for simple operations

@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  tgf:
+    # 替换为您 Docker Hub 的用户名和仓库名
+    # Replace with your Docker Hub username/repo
+    image: your_username/tg-telethon:latest
+    container_name: tgf_app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # 数据持久化目录Mapping data directory
+      - ./data:/data
+    environment:
+      - TGF_LOG_LEVEL=INFO
+      # 如果需要自定义 API ID/Hash (通常在首次初始化后会在数据库中，这里是可选覆盖)
+      # - TGF_API_ID=123456
+      # - TGF_API_HASH=abcdef...
+      # - TZ=Asia/Shanghai  # 设置时区

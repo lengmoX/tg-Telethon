@@ -13,6 +13,8 @@ from functools import lru_cache
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
+from passlib.context import CryptContext
+
 from tgf.data.config import Config, get_config
 from tgf.data.database import Database
 
@@ -39,42 +41,43 @@ async def get_db(config: Config = Depends(get_api_config)) -> Database:
 
 # ============== Auth ==============
 
+# Password hashing context
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+
 # Simple token-based auth
-# Password set via TGF_WEB_PASSWORD env var
-_active_tokens: set[str] = set()
+_active_tokens: dict[str, str] = {}  # token -> username
 
 security = HTTPBearer(auto_error=False)
 
 
 def get_password_hash(password: str) -> str:
-    """Hash password with SHA256"""
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Hash password with argon2"""
+    return pwd_context.hash(password)
 
 
-def verify_password(password: str) -> bool:
-    """Verify password against env var"""
-    expected = os.environ.get("TGF_WEB_PASSWORD", "admin")
-    return password == expected
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify password against hash"""
+    return pwd_context.verify(plain_password, hashed_password)
 
 
-def create_token() -> str:
-    """Create a new session token"""
+def create_token(username: str) -> str:
+    """Create a new session token for user"""
     token = secrets.token_urlsafe(32)
-    _active_tokens.add(token)
+    _active_tokens[token] = username
     return token
 
 
 def revoke_token(token: str) -> bool:
     """Revoke a session token"""
     if token in _active_tokens:
-        _active_tokens.discard(token)
+        del _active_tokens[token]
         return True
     return False
 
 
-def verify_token(token: str) -> bool:
-    """Verify if token is valid"""
-    return token in _active_tokens
+def verify_token(token: str) -> Optional[str]:
+    """Verify if token is valid and return username"""
+    return _active_tokens.get(token)
 
 
 async def get_current_user(
@@ -88,14 +91,15 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    if not verify_token(credentials.credentials):
+    username = verify_token(credentials.credentials)
+    if not username:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    return "user"
+    return username
 
 
 # Optional auth - allows unauthenticated access but provides user if authenticated
@@ -106,7 +110,4 @@ async def get_optional_user(
     if not credentials:
         return None
     
-    if verify_token(credentials.credentials):
-        return "user"
-    
-    return None
+    return verify_token(credentials.credentials)

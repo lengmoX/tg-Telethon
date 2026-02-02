@@ -59,6 +59,7 @@ import {
   type ExportRequest,
   type ExportResponse,
 } from '@/api';
+import { toast } from 'sonner';
 
 
 // Toast-like copy feedback
@@ -190,13 +191,6 @@ export function ChatsPage() {
     URL.revokeObjectURL(url);
   };
 
-  // Copy all links
-  const handleCopyAllLinks = async () => {
-    if (!exportResult) return;
-    const content = exportResult.links.join('\n');
-    await copy(content);
-  };
-
   // Get type icon
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -243,47 +237,50 @@ export function ChatsPage() {
 
   return (
     <div className="space-y-8">
-      {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight">对话管理</h2>
-          <p className="text-muted-foreground">查看对话列表并导出消息链接</p>
+      {/* Sticky Top Section */}
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur pb-4 -mx-6 px-6 pt-8 -mt-8 space-y-8">
+        {/* Page Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold tracking-tight">对话管理</h2>
+            <p className="text-muted-foreground">查看对话列表并导出消息链接</p>
+          </div>
+          <Button variant="outline" onClick={fetchData}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            刷新
+          </Button>
         </div>
-        <Button variant="outline" onClick={fetchData}>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          刷新
-        </Button>
-      </div>
 
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription className="ml-2">{error}</AlertDescription>
-        </Alert>
-      )}
+        {error && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="ml-2">{error}</AlertDescription>
+          </Alert>
+        )}
 
-      {/* Filters */}
-      <div className="flex gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="搜索对话..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
+        {/* Filters */}
+        <div className="flex gap-4">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="搜索对话..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="类型筛选" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部类型</SelectItem>
+              <SelectItem value="channel">频道</SelectItem>
+              <SelectItem value="group">群组</SelectItem>
+              <SelectItem value="user">私聊</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-40">
-            <SelectValue placeholder="类型筛选" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部类型</SelectItem>
-            <SelectItem value="channel">频道</SelectItem>
-            <SelectItem value="group">群组</SelectItem>
-            <SelectItem value="user">私聊</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       {/* Chats Table */}
@@ -428,7 +425,10 @@ export function ChatsPage() {
 
                 {/* Action buttons */}
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={handleCopyAllLinks} className="flex-1">
+                  <Button variant="outline" className="flex-1" onClick={() => {
+                    navigator.clipboard.writeText(exportResult.links.join('\n'));
+                    toast.success('已复制全部链接');
+                  }}>
                     <Copy className="mr-2 h-4 w-4" />
                     复制全部链接
                   </Button>

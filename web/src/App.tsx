@@ -16,8 +16,9 @@
  */
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { LoginPage, Dashboard, TelegramLogin, RulesPage, ChatsPage, NotFound } from '@/pages';
+import { LoginPage, Dashboard, TelegramLogin, RulesPage, ChatsPage, ForwardPage, NotFound } from '@/pages';
 import { Layout } from '@/components';
+import { Toaster } from '@/components/ui/sonner';
 import { isAuthenticated } from '@/api';
 import { useState } from 'react';
 
@@ -77,6 +78,9 @@ function App() {
           {/* Chats - Dialog list and message export */}
           <Route path="chats" element={<ChatsPage />} />
 
+          {/* Forward - One-time message forwarding */}
+          <Route path="forward" element={<ForwardPage />} />
+
           {/* 404 Catch-all - Handle unknown routes */}
           <Route path="*" element={<NotFound />} />
         </Route>
@@ -87,6 +91,7 @@ function App() {
         */}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
+      <Toaster />
     </BrowserRouter>
   );
 }

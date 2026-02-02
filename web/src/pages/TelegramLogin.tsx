@@ -5,6 +5,8 @@ import {
   loginTelegram,
   submitTelegramPassword,
   logoutTelegram,
+  exportBackup,
+  importBackup,
   type TelegramAuthStatus
 } from '@/api';
 import { Button } from '@/components/ui/button';
@@ -23,8 +25,12 @@ import {
   AlertCircle,
   KeyRound,
   QrCode,
-  User
+  User,
+  Database,
+  Download,
+  Upload
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 export function TelegramLogin() {
   const [status, setStatus] = useState<TelegramAuthStatus | null>(null);
@@ -117,6 +123,44 @@ export function TelegramLogin() {
     }
   };
 
+  const handleExportBackup = async () => {
+    try {
+      toast.info('正在准备备份文件...');
+      await exportBackup();
+      toast.success('备份已导出');
+    } catch (err) {
+      toast.error('导出备份失败');
+      console.error(err);
+    }
+  };
+
+  const handleImportBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!confirm('警告：恢复备份将覆盖当前所有数据！\n确定要继续吗？')) {
+      e.target.value = '';
+      return;
+    }
+
+    try {
+      toast.loading('正在恢复数据，请稍候...');
+      const res = await importBackup(file);
+      toast.dismiss();
+      toast.success(res.message);
+
+      // Refresh status after restore
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (err) {
+      toast.dismiss();
+      toast.error(err instanceof Error ? err.message : '恢复失败');
+    } finally {
+      e.target.value = '';
+    }
+  };
+
   if (!status) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -184,6 +228,44 @@ export function TelegramLogin() {
                 断开连接
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+                <Database className="h-5 w-5 text-slate-600 dark:text-slate-400" />
+              </div>
+              <div>
+                <CardTitle className="text-base">数据备份与恢复</CardTitle>
+                <CardDescription className="text-xs">导出或恢复应用数据（包含数据库、会话和配置）</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4">
+              <Button variant="outline" onClick={handleExportBackup} className="h-20 flex flex-col gap-2">
+                <Download className="h-6 w-6" />
+                <span>导出备份</span>
+              </Button>
+
+              <div className="relative">
+                <Input
+                  type="file"
+                  accept=".zip"
+                  className="absolute inset-0 opacity-0 cursor-pointer h-full"
+                  onChange={handleImportBackup}
+                />
+                <Button variant="outline" className="w-full h-20 flex flex-col gap-2 pointer-events-none">
+                  <Upload className="h-6 w-6" />
+                  <span>恢复备份</span>
+                </Button>
+              </div>
+            </div>
+            <p className="mt-4 text-xs text-muted-foreground">
+              注意：恢复备份会覆盖当前所有数据，并可能需要重新登录。建议先导出当前备份。
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -301,9 +383,21 @@ export function TelegramLogin() {
                 </ol>
               </div>
 
-              <div className="flex items-center justify-center gap-2 text-xs text-blue-600 dark:text-blue-400">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                等待扫码...
+              <div className="flex flex-col items-center gap-3">
+                <div className="flex items-center justify-center gap-2 text-xs text-blue-600 dark:text-blue-400">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  等待扫码...
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleStartLogin}
+                  disabled={loading}
+                  className="text-xs text-muted-foreground hover:text-foreground h-8"
+                >
+                  <RefreshCw className={`mr-1.5 h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
+                  刷新二维码
+                </Button>
               </div>
             </div>
           ) : (
@@ -328,6 +422,44 @@ export function TelegramLogin() {
               </Button>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+              <Database className="h-5 w-5 text-slate-600 dark:text-slate-400" />
+            </div>
+            <div>
+              <CardTitle className="text-base">数据备份与恢复</CardTitle>
+              <CardDescription className="text-xs">导出或恢复应用数据（包含数据库、会话和配置）</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-4">
+            <Button variant="outline" onClick={handleExportBackup} className="h-20 flex flex-col gap-2">
+              <Download className="h-6 w-6" />
+              <span>导出备份</span>
+            </Button>
+
+            <div className="relative">
+              <Input
+                type="file"
+                accept=".zip"
+                className="absolute inset-0 opacity-0 cursor-pointer h-full"
+                onChange={handleImportBackup}
+              />
+              <Button variant="outline" className="w-full h-20 flex flex-col gap-2 pointer-events-none">
+                <Upload className="h-6 w-6" />
+                <span>恢复备份</span>
+              </Button>
+            </div>
+          </div>
+          <p className="mt-4 text-xs text-muted-foreground">
+            注意：恢复备份会覆盖当前所有数据，并可能需要重新登录。建议先导出当前备份。
+          </p>
         </CardContent>
       </Card>
     </div>

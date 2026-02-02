@@ -6,7 +6,6 @@ import {
   Shield,
   Menu,
   Settings,
-  FileText,
   ChevronRight,
   Inbox,
 } from 'lucide-react';
@@ -35,9 +34,8 @@ export function Layout({ onLogout }: LayoutProps) {
     { title: '概览', icon: LayoutDashboard, path: '/dashboard' },
     { title: '规则管理', icon: Shield, path: '/rules' },
     { title: '对话管理', icon: Inbox, path: '/chats' },
-    { title: '账号连接', icon: MessageSquare, path: '/telegram' },
-    { title: '日志监控', icon: FileText, path: '/logs', disabled: true },
-    { title: '系统设置', icon: Settings, path: '/settings', disabled: true }
+    { title: '消息转发', icon: MessageSquare, path: '/forward' },
+    { title: '账号连接', icon: Settings, path: '/telegram' },
   ];
 
   const SidebarContent = () => (
@@ -61,26 +59,17 @@ export function Layout({ onLogout }: LayoutProps) {
             return (
               <li key={item.path}>
                 <Link
-                  to={item.disabled ? '#' : item.path}
-                  onClick={(e) => {
-                    if (item.disabled) e.preventDefault();
-                    else setOpen(false);
-                  }}
+                  to={item.path}
+                  onClick={() => setOpen(false)}
                   className={cn(
                     "flex items-center gap-3 rounded-md px-3 py-2.5 transition-colors",
                     isActive
                       ? "bg-accent text-accent-foreground font-medium"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-                    item.disabled && "opacity-50 cursor-not-allowed"
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                   )}
                 >
                   <item.icon className="h-5 w-5" />
                   <span className="flex-1">{item.title}</span>
-                  {item.disabled && (
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                      DEV
-                    </span>
-                  )}
                   {isActive && <ChevronRight className="h-4 w-4" />}
                 </Link>
               </li>
@@ -105,7 +94,7 @@ export function Layout({ onLogout }: LayoutProps) {
   );
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen overflow-hidden bg-background">
       {/* Desktop Sidebar */}
       <aside className="hidden w-64 border-r bg-background md:block">
         <SidebarContent />

@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from tgf import __version__
 from tgf.data.config import get_config
 
-from api.routers import rules, watcher, states, auth, telegram, chats
+from api.routers import rules, watcher, states, auth, telegram, chats, forward, backup
 from api.services.watcher_manager import get_watcher_manager
 
 # Configure logging
@@ -78,11 +78,13 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["认证"])
-app.include_router(telegram.router, prefix="/api/telegram", tags=["Telegram 认证"])
-app.include_router(rules.router, prefix="/api/rules", tags=["规则管理"])
-app.include_router(watcher.router, prefix="/api/watcher", tags=["监听控制"])
-app.include_router(states.router, prefix="/api/states", tags=["同步状态"])
-app.include_router(chats.router, prefix="/api/chats", tags=["对话管理"])
+app.include_router(telegram.router, prefix="/api/telegram", tags=["telegram"])
+app.include_router(rules.router, prefix="/api/rules", tags=["rules"])
+app.include_router(watcher.router, prefix="/api/watcher", tags=["watcher"])
+app.include_router(states.router, prefix="/api/states", tags=["states"])
+app.include_router(chats.router, prefix="/api/chats", tags=["chats"])
+app.include_router(forward.router, prefix="/api/forward", tags=["forward"])
+app.include_router(backup.router, prefix="/api/backup", tags=["backup"])
 
 
 @app.get("/api/health")
@@ -91,7 +93,35 @@ async def health_check():
     return {"status": "ok", "version": __version__}
 
 
-# NOTE: Frontend is now served separately via Vite dev server
-# Run: cd web && npm run dev
-# Vite proxies /api requests to this backend automatically
+# Serve SPA frontend if dist directory exists (Production/Docker)
+import os
+from fastapi.responses import FileResponse
+
+# Check for web dist directory via env var or default location
+web_dist = os.environ.get("TGF_WEB_DIST", "web/dist")
+web_path = Path(web_dist).resolve()
+
+if web_path.exists() and (web_path / "index.html").exists():
+    logger.info(f"Serving frontend from {web_path}")
+    
+    # Mount static assets (JS, CSS, images)
+    app.mount("/assets", StaticFiles(directory=str(web_path / "assets")), name="assets")
+    
+    # Catch-all for SPA routes - return index.html
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Allow API routes to pass through (though they should be caught above)
+        if full_path.startswith("api/"):
+            return {"error": "Not Found"}
+            
+        # Check if file exists in root (e.g. favicon.ico, manifest.json)
+        file_path = web_path / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(file_path)
+            
+        # Fallback to index.html for React routing
+        return FileResponse(web_path / "index.html")
+else:
+    logger.warning(f"Frontend dist not found at {web_path}. Running in API-only mode.")
+    logger.info("For development, run 'cd web && npm run dev' separately.")
 

@@ -10,7 +10,16 @@ from pydantic import BaseModel, Field
 # ============== Auth ==============
 
 class LoginRequest(BaseModel):
+    username: str = "admin"  # Default for compatibility, but now required
     password: str
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+
+class AuthStatus(BaseModel):
+    initialized: bool  # True if at least one user exists
+    need_setup: bool   # Alias for not initialized
 
 
 class TokenResponse(BaseModel):
@@ -144,6 +153,33 @@ class ExportResponse(BaseModel):
     chat_username: Optional[str] = None
     chat_id: int
     links: List[str] = Field(default_factory=list, description="Message links in format https://t.me/chat/id")
+
+
+# ============== Forward ==============
+
+class ForwardRequest(BaseModel):
+    """Request to forward messages"""
+    links: List[str] = Field(..., min_length=1, description="Message links to forward")
+    dest: str = Field("me", description="Destination chat (me, @username, or chat_id)")
+    mode: str = Field("clone", pattern="^(clone|direct)$", description="Forward mode")
+    detect_album: bool = Field(True, description="Auto-detect and forward albums together")
+
+
+class ForwardResultItem(BaseModel):
+    """Result of a single forward operation"""
+    link: str
+    success: bool
+    error: Optional[str] = None
+    target_msg_id: Optional[int] = None
+
+
+class ForwardResponse(BaseModel):
+    """Response for forward operation"""
+    success: bool
+    total: int
+    succeeded: int
+    failed: int
+    results: List[ForwardResultItem]
 
 
 # ============== Common ==============

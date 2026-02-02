@@ -119,11 +119,30 @@ async function fetchApi<T>(
   return response.json();
 }
 
+// Auth Status Type
+export interface AuthStatus {
+  initialized: boolean;
+  need_setup: boolean;
+}
+
 // Auth API
-export async function login(password: string): Promise<{ access_token: string }> {
+export async function getAuthStatus(): Promise<AuthStatus> {
+  return fetchApi<AuthStatus>('/auth/status');
+}
+
+export async function setupAdmin(username: string, password: string): Promise<{ access_token: string }> {
+  const response = await fetchApi<{ access_token: string }>('/auth/setup', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  });
+  setToken(response.access_token);
+  return response;
+}
+
+export async function login(password: string, username: string = 'admin'): Promise<{ access_token: string }> {
   const response = await fetchApi<{ access_token: string }>('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ username, password }),
   });
   setToken(response.access_token);
   return response;
@@ -275,3 +294,86 @@ export async function exportChat(request: ExportRequest): Promise<ExportResponse
     body: JSON.stringify(request),
   });
 }
+
+// Forward API
+export interface ForwardRequest {
+  links: string[];
+  dest?: string;
+  mode?: 'clone' | 'direct';
+  detect_album?: boolean;
+}
+
+export interface ForwardResultItem {
+  link: string;
+  success: boolean;
+  error?: string;
+  target_msg_id?: number;
+}
+
+export interface ForwardResponse {
+  success: boolean;
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: ForwardResultItem[];
+}
+
+export async function forwardMessages(request: ForwardRequest): Promise<ForwardResponse> {
+  return fetchApi<ForwardResponse>('/forward', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
+}
+
+// Backup API
+export interface BackupImportResponse {
+  success: boolean;
+  message: string;
+  details: string[];
+}
+
+export const exportBackup = async (): Promise<void> => {
+  const token = localStorage.getItem('tgf_token');
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const response = await fetch(`${API_BASE}/backup/export`, {
+    headers,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'Export failed' }));
+    throw new Error(errorData.detail || 'Failed to export backup');
+  }
+
+  // Trigger download
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+
+  // Try to get filename from headers
+  const contentDisposition = response.headers.get('Content-Disposition');
+  let filename = 'tgf_backup.zip';
+  if (contentDisposition) {
+    const filenameMatch = contentDisposition.match(/filename="?(.+?)"?$/);
+    if (filenameMatch && filenameMatch[1]) {
+      filename = filenameMatch[1];
+    }
+  }
+
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+};
+
+export const importBackup = async (file: File): Promise<BackupImportResponse> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return fetchApi<BackupImportResponse>('/backup/import', {
+    method: 'POST',
+    body: formData,
+  });
+};
