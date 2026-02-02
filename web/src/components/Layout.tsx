@@ -7,7 +7,8 @@ import {
   Menu,
   Settings,
   FileText,
-  ChevronRight
+  ChevronRight,
+  Inbox,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -33,6 +34,7 @@ export function Layout({ onLogout }: LayoutProps) {
   const menuItems = [
     { title: '概览', icon: LayoutDashboard, path: '/dashboard' },
     { title: '规则管理', icon: Shield, path: '/rules' },
+    { title: '对话管理', icon: Inbox, path: '/chats' },
     { title: '账号连接', icon: MessageSquare, path: '/telegram' },
     { title: '日志监控', icon: FileText, path: '/logs', disabled: true },
     { title: '系统设置', icon: Settings, path: '/settings', disabled: true }

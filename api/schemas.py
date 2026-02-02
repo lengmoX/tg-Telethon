@@ -108,6 +108,42 @@ class TelegramPasswordRequest(BaseModel):
     password: str
 
 
+# ============== Chats ==============
+
+class ChatInfo(BaseModel):
+    """Chat/Dialog information"""
+    id: int
+    name: str
+    type: str = Field(..., description="user, group, or channel")
+    username: Optional[str] = None
+    unread_count: int = 0
+    last_message_date: Optional[str] = None
+
+
+class ChatListResponse(BaseModel):
+    """Response for chat list"""
+    chats: List[ChatInfo]
+    total: int
+
+
+class ExportRequest(BaseModel):
+    """Request to export messages from a chat"""
+    chat: str = Field(..., description="Chat ID, username, or link")
+    limit: Optional[int] = Field(None, ge=1, le=10000, description="Max messages to export")
+    from_id: int = Field(0, ge=0, description="Start from message ID")
+    to_id: int = Field(0, ge=0, description="End at message ID")
+    msg_type: str = Field("all", pattern="^(all|media|text|photo|video|document)$")
+    with_content: bool = Field(False, description="Include message text content")
+
+
+class ExportResponse(BaseModel):
+    """Response for export operation"""
+    success: bool
+    message_count: int
+    filename: str
+    chat_name: str
+
+
 # ============== Common ==============
 
 class MessageResponse(BaseModel):

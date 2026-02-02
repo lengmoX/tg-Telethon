@@ -16,7 +16,7 @@
  */
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { LoginPage, Dashboard, TelegramLogin, RulesPage, NotFound } from '@/pages';
+import { LoginPage, Dashboard, TelegramLogin, RulesPage, ChatsPage, NotFound } from '@/pages';
 import { Layout } from '@/components';
 import { isAuthenticated } from '@/api';
 import { useState } from 'react';
@@ -73,6 +73,9 @@ function App() {
 
           {/* Rules - CRUD management for forwarding rules */}
           <Route path="rules" element={<RulesPage />} />
+
+          {/* Chats - Dialog list and message export */}
+          <Route path="chats" element={<ChatsPage />} />
 
           {/* 404 Catch-all - Handle unknown routes */}
           <Route path="*" element={<NotFound />} />

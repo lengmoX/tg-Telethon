@@ -224,3 +224,66 @@ export async function getStates(): Promise<State[]> {
 export async function getHealth(): Promise<{ status: string; version: string }> {
   return fetchApi('/health');
 }
+
+// ============================================================
+// Chat Types and API
+// ============================================================
+
+export interface ChatInfo {
+  id: number;
+  name: string;
+  type: 'user' | 'group' | 'channel' | 'unknown';
+  username: string | null;
+  unread_count: number;
+  last_message_date: string | null;
+}
+
+export interface ChatListResponse {
+  chats: ChatInfo[];
+  total: number;
+}
+
+export interface ExportRequest {
+  chat: string;
+  limit?: number;
+  from_id?: number;
+  to_id?: number;
+  msg_type?: 'all' | 'media' | 'text' | 'photo' | 'video' | 'document';
+  with_content?: boolean;
+}
+
+export interface ExportResponse {
+  success: boolean;
+  message_count: number;
+  filename: string;
+  chat_name: string;
+}
+
+export interface ExportFile {
+  filename: string;
+  size: number;
+  created_at: string;
+}
+
+// Chats API
+export async function getChats(
+  limit: number = 100,
+  chatType: string = 'all'
+): Promise<ChatListResponse> {
+  return fetchApi<ChatListResponse>(`/chats?limit=${limit}&chat_type=${chatType}`);
+}
+
+export async function exportChat(request: ExportRequest): Promise<ExportResponse> {
+  return fetchApi<ExportResponse>('/chats/export', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
+}
+
+export async function listExports(): Promise<{ exports: ExportFile[]; total: number }> {
+  return fetchApi('/chats/export/list');
+}
+
+export function getExportDownloadUrl(filename: string): string {
+  return `${API_BASE}/chats/export/download/${filename}`;
+}

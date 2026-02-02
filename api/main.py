@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from tgf import __version__
 from tgf.data.config import get_config
 
-from api.routers import rules, watcher, states, auth, telegram
+from api.routers import rules, watcher, states, auth, telegram, chats
 from api.services.watcher_manager import get_watcher_manager
 
 
@@ -56,6 +56,7 @@ app.include_router(telegram.router, prefix="/api/telegram", tags=["Telegram 认�
 app.include_router(rules.router, prefix="/api/rules", tags=["规则管理"])
 app.include_router(watcher.router, prefix="/api/watcher", tags=["监听控制"])
 app.include_router(states.router, prefix="/api/states", tags=["同步状态"])
+app.include_router(chats.router, prefix="/api/chats", tags=["对话管理"])
 
 
 @app.get("/api/health")
