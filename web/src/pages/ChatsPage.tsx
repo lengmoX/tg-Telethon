@@ -3,18 +3,18 @@
  * 
  * Features:
  * - List all Telegram dialogs (chats, groups, channels)
- * - Filter by type
- * - Export messages from selected chat
- * - Download exported files
+ * - Click to copy ID, name, or username
+ * - Export messages and display links inline
+ * - Download links as text file
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -45,56 +45,71 @@ import {
   Radio,
   RefreshCw,
   Download,
-  FileJson,
   Loader2,
   AlertCircle,
   Search,
   User,
+  Copy,
+  Check,
 } from 'lucide-react';
 import {
   getChats,
   exportChat,
-  listExports,
-  getExportDownloadUrl,
   type ChatInfo,
   type ExportRequest,
-  type ExportFile,
+  type ExportResponse,
 } from '@/api';
+
+
+// Toast-like copy feedback
+function useCopyFeedback() {
+  const [copiedValue, setCopiedValue] = useState<string | null>(null);
+
+  const copy = useCallback(async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedValue(value);
+      setTimeout(() => setCopiedValue(null), 1500);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  }, []);
+
+  return { copiedValue, copy };
+}
 
 
 export function ChatsPage() {
   // State
   const [chats, setChats] = useState<ChatInfo[]>([]);
   const [filteredChats, setFilteredChats] = useState<ChatInfo[]>([]);
-  const [exports, setExports] = useState<ExportFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+
+  // Copy functionality
+  const { copiedValue, copy } = useCopyFeedback();
 
   // Export dialog state
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedChat, setSelectedChat] = useState<ChatInfo | null>(null);
   const [exportOptions, setExportOptions] = useState<ExportRequest>({
     chat: '',
-    limit: 1000,
+    limit: 100,
     msg_type: 'all',
     with_content: false,
   });
   const [exporting, setExporting] = useState(false);
-  const [exportResult, setExportResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [exportResult, setExportResult] = useState<ExportResponse | null>(null);
 
   // Fetch data
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [chatsRes, exportsRes] = await Promise.all([
-        getChats(200, 'all'),
-        listExports(),
-      ]);
+      const chatsRes = await getChats(200, 'all');
       setChats(chatsRes.chats);
       setFilteredChats(chatsRes.chats);
-      setExports(exportsRes.exports);
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
@@ -134,7 +149,7 @@ export function ChatsPage() {
     setSelectedChat(chat);
     setExportOptions({
       chat: chat.id.toString(),
-      limit: 1000,
+      limit: 100,
       msg_type: 'all',
       with_content: false,
     });
@@ -151,26 +166,35 @@ export function ChatsPage() {
 
     try {
       const result = await exportChat(exportOptions);
-      setExportResult({
-        success: true,
-        message: `导出成功！共 ${result.message_count} 条消息，文件: ${result.filename}`,
-      });
-      // Refresh exports list
-      const exportsRes = await listExports();
-      setExports(exportsRes.exports);
+      setExportResult(result);
     } catch (err) {
-      setExportResult({
-        success: false,
-        message: err instanceof Error ? err.message : '导出失败',
-      });
+      setError(err instanceof Error ? err.message : '导出失败');
     } finally {
       setExporting(false);
     }
   };
 
-  // Download export file
-  const handleDownload = (filename: string) => {
-    window.open(getExportDownloadUrl(filename), '_blank');
+  // Download links as text file
+  const handleDownloadLinks = () => {
+    if (!exportResult) return;
+
+    const content = exportResult.links.join('\n');
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${exportResult.chat_name}_links.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Copy all links
+  const handleCopyAllLinks = async () => {
+    if (!exportResult) return;
+    const content = exportResult.links.join('\n');
+    await copy(content);
   };
 
   // Get type icon
@@ -193,12 +217,21 @@ export function ChatsPage() {
     }
   };
 
-  // Format file size
-  const formatSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
+  // Clickable cell with copy
+  const CopyableCell = ({ value, className = '' }: { value: string; className?: string }) => (
+    <button
+      onClick={() => copy(value)}
+      className={`text-left hover:bg-accent px-2 py-1 -mx-2 -my-1 rounded transition-colors cursor-pointer flex items-center gap-1 ${className}`}
+      title="点击复制"
+    >
+      <span className="truncate">{value}</span>
+      {copiedValue === value ? (
+        <Check className="h-3 w-3 text-green-500 flex-shrink-0" />
+      ) : (
+        <Copy className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 flex-shrink-0" />
+      )}
+    </button>
+  );
 
   if (loading) {
     return (
@@ -214,7 +247,7 @@ export function ChatsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold tracking-tight">对话管理</h2>
-          <p className="text-muted-foreground">查看对话列表并导出消息</p>
+          <p className="text-muted-foreground">查看对话列表并导出消息链接</p>
         </div>
         <Button variant="outline" onClick={fetchData}>
           <RefreshCw className="mr-2 h-4 w-4" />
@@ -257,7 +290,7 @@ export function ChatsPage() {
       <Card>
         <CardHeader>
           <CardTitle>对话列表</CardTitle>
-          <CardDescription>共 {filteredChats.length} 个对话</CardDescription>
+          <CardDescription>共 {filteredChats.length} 个对话 · 点击 ID/名称/用户名 可复制</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -274,19 +307,26 @@ export function ChatsPage() {
               </TableHeader>
               <TableBody>
                 {filteredChats.map((chat) => (
-                  <TableRow key={chat.id}>
+                  <TableRow key={chat.id} className="group">
                     <TableCell className="font-mono text-muted-foreground">
-                      {chat.id}
+                      <CopyableCell value={chat.id.toString()} />
                     </TableCell>
                     <TableCell>{getTypeBadge(chat.type)}</TableCell>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         {getTypeIcon(chat.type)}
-                        <span className="truncate max-w-[200px]">{chat.name || '[无名称]'}</span>
+                        <CopyableCell
+                          value={chat.name || '[无名称]'}
+                          className="max-w-[200px]"
+                        />
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {chat.username ? `@${chat.username}` : '-'}
+                      {chat.username ? (
+                        <CopyableCell value={`@${chat.username}`} />
+                      ) : (
+                        '-'
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       {chat.unread_count > 0 && (
@@ -298,6 +338,7 @@ export function ChatsPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleExportClick(chat)}
+                        title="导出消息链接"
                       >
                         <Download className="h-4 w-4" />
                       </Button>
@@ -310,127 +351,131 @@ export function ChatsPage() {
         </CardContent>
       </Card>
 
-      {/* Exports List */}
-      {exports.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>已导出文件</CardTitle>
-            <CardDescription>点击下载导出的 JSON 文件</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {exports.map((file) => (
-                <div
-                  key={file.filename}
-                  className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent cursor-pointer"
-                  onClick={() => handleDownload(file.filename)}
-                >
-                  <div className="flex items-center gap-3">
-                    <FileJson className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <p className="font-medium">{file.filename}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {formatSize(file.size)} · {new Date(file.created_at).toLocaleString('zh-CN')}
-                      </p>
-                    </div>
-                  </div>
-                  <Download className="h-4 w-4 text-muted-foreground" />
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Export Dialog */}
       <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>导出消息</DialogTitle>
+            <DialogTitle>导出消息链接</DialogTitle>
             <DialogDescription>
-              从 {selectedChat?.name || '选中的对话'} 导出消息到 JSON 文件
+              从 {selectedChat?.name || '选中的对话'} 导出消息链接
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            {/* Limit */}
-            <div className="space-y-2">
-              <Label>消息数量限制</Label>
-              <Input
-                type="number"
-                value={exportOptions.limit || ''}
-                onChange={(e) => setExportOptions({
-                  ...exportOptions,
-                  limit: e.target.value ? parseInt(e.target.value) : undefined,
-                })}
-                placeholder="不限制"
-              />
-            </div>
+          <div className="space-y-4 py-4 flex-1 overflow-hidden flex flex-col">
+            {/* Export Options - only show before export */}
+            {!exportResult && (
+              <>
+                {/* Limit */}
+                <div className="space-y-2">
+                  <Label>消息数量</Label>
+                  <Input
+                    type="number"
+                    value={exportOptions.limit || ''}
+                    onChange={(e) => setExportOptions({
+                      ...exportOptions,
+                      limit: e.target.value ? parseInt(e.target.value) : undefined,
+                    })}
+                    placeholder="100"
+                  />
+                </div>
 
-            {/* Message Type */}
-            <div className="space-y-2">
-              <Label>消息类型</Label>
-              <Select
-                value={exportOptions.msg_type}
-                onValueChange={(v) => setExportOptions({
-                  ...exportOptions,
-                  msg_type: v as ExportRequest['msg_type'],
-                })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部消息</SelectItem>
-                  <SelectItem value="media">仅媒体</SelectItem>
-                  <SelectItem value="text">仅文本</SelectItem>
-                  <SelectItem value="photo">仅图片</SelectItem>
-                  <SelectItem value="video">仅视频</SelectItem>
-                  <SelectItem value="document">仅文档</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+                {/* Message Type */}
+                <div className="space-y-2">
+                  <Label>消息类型</Label>
+                  <Select
+                    value={exportOptions.msg_type}
+                    onValueChange={(v) => setExportOptions({
+                      ...exportOptions,
+                      msg_type: v as ExportRequest['msg_type'],
+                    })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">全部消息</SelectItem>
+                      <SelectItem value="media">仅媒体</SelectItem>
+                      <SelectItem value="text">仅文本</SelectItem>
+                      <SelectItem value="photo">仅图片</SelectItem>
+                      <SelectItem value="video">仅视频</SelectItem>
+                      <SelectItem value="document">仅文档</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
 
-            {/* With Content */}
-            <div className="flex items-center justify-between">
-              <div>
-                <Label>包含消息内容</Label>
-                <p className="text-sm text-muted-foreground">导出消息文本内容</p>
-              </div>
-              <Switch
-                checked={exportOptions.with_content}
-                onCheckedChange={(v) => setExportOptions({
-                  ...exportOptions,
-                  with_content: v,
-                })}
-              />
-            </div>
-
-            {/* Result */}
+            {/* Export Result */}
             {exportResult && (
-              <Alert variant={exportResult.success ? 'default' : 'destructive'}>
-                <AlertDescription>{exportResult.message}</AlertDescription>
+              <div className="flex-1 overflow-hidden flex flex-col space-y-3">
+                <div className="flex items-center justify-between">
+                  <Alert className="flex-1">
+                    <AlertDescription>
+                      导出成功！共 {exportResult.message_count} 条消息
+                    </AlertDescription>
+                  </Alert>
+                </div>
+
+                {/* Links display */}
+                <div className="flex-1 overflow-hidden">
+                  <Textarea
+                    readOnly
+                    value={exportResult.links.join('\n')}
+                    className="h-full min-h-[200px] font-mono text-sm resize-none"
+                    placeholder="消息链接将显示在这里..."
+                  />
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={handleCopyAllLinks} className="flex-1">
+                    <Copy className="mr-2 h-4 w-4" />
+                    复制全部链接
+                  </Button>
+                  <Button onClick={handleDownloadLinks} className="flex-1">
+                    <Download className="mr-2 h-4 w-4" />
+                    下载 TXT 文件
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Error display */}
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setExportDialogOpen(false)}>
-              取消
-            </Button>
-            <Button onClick={handleExport} disabled={exporting}>
-              {exporting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  导出中...
-                </>
-              ) : (
-                <>
-                  <Download className="mr-2 h-4 w-4" />
-                  开始导出
-                </>
-              )}
-            </Button>
+            {!exportResult ? (
+              <>
+                <Button variant="outline" onClick={() => setExportDialogOpen(false)}>
+                  取消
+                </Button>
+                <Button onClick={handleExport} disabled={exporting}>
+                  {exporting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      导出中...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="mr-2 h-4 w-4" />
+                      开始导出
+                    </>
+                  )}
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" onClick={() => {
+                setExportResult(null);
+                setExportDialogOpen(false);
+              }}>
+                关闭
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

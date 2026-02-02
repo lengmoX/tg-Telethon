@@ -255,14 +255,10 @@ export interface ExportRequest {
 export interface ExportResponse {
   success: boolean;
   message_count: number;
-  filename: string;
   chat_name: string;
-}
-
-export interface ExportFile {
-  filename: string;
-  size: number;
-  created_at: string;
+  chat_username: string | null;
+  chat_id: number;
+  links: string[];
 }
 
 // Chats API
@@ -278,12 +274,4 @@ export async function exportChat(request: ExportRequest): Promise<ExportResponse
     method: 'POST',
     body: JSON.stringify(request),
   });
-}
-
-export async function listExports(): Promise<{ exports: ExportFile[]; total: number }> {
-  return fetchApi('/chats/export/list');
-}
-
-export function getExportDownloadUrl(filename: string): string {
-  return `${API_BASE}/chats/export/download/${filename}`;
 }

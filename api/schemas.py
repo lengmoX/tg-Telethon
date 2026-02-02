@@ -140,8 +140,10 @@ class ExportResponse(BaseModel):
     """Response for export operation"""
     success: bool
     message_count: int
-    filename: str
     chat_name: str
+    chat_username: Optional[str] = None
+    chat_id: int
+    links: List[str] = Field(default_factory=list, description="Message links in format https://t.me/chat/id")
 
 
 # ============== Common ==============

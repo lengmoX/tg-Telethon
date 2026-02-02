@@ -179,6 +179,11 @@ async def export_chat(
                 logger.warning(f"Chat not found: {request.chat} - {e}")
                 raise HTTPException(status_code=404, detail=f"Chat not found: {str(e)}")
             
+            # Get chat info for building links
+            chat_username = getattr(entity, 'username', None)
+            chat_id = entity.id
+            chat_name = getattr(entity, 'title', None) or getattr(entity, 'first_name', None) or str(chat_id)
+            
             # Prepare iterator args
             iter_kwargs = {}
             if request.from_id > 0:
@@ -188,7 +193,7 @@ async def export_chat(
             if request.limit:
                 iter_kwargs['limit'] = request.limit
             
-            messages = []
+            message_ids = []
             count = 0
             
             logger.debug(f"Iterating messages with kwargs: {iter_kwargs}")
@@ -207,49 +212,46 @@ async def export_chat(
                     elif request.msg_type == 'document' and not msg.document:
                         continue
                 
-                # Build message data
-                msg_data = _message_to_dict(msg, media_handler, request.with_content)
-                messages.append(msg_data)
+                # Collect message ID
+                message_ids.append(msg.id)
                 
                 count += 1
                 
                 # Log progress every 100 messages
                 if count % 100 == 0:
-                    logger.debug(f"Exported {count} messages...")
+                    logger.debug(f"Collected {count} messages...")
                 
                 if request.limit and count >= request.limit:
                     break
             
-            # Generate filename with timestamp
-            chat_name = getattr(entity, 'title', None) or getattr(entity, 'first_name', None) or str(entity.id)
-            safe_name = "".join(c for c in chat_name if c.isalnum() or c in (' ', '-', '_')).strip()[:30]
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"export_{safe_name}_{timestamp}.json"
-            
-            # Write to file
-            export_data = {
-                "chat": {
-                    "id": entity.id,
-                    "name": chat_name,
-                    "username": getattr(entity, 'username', None),
-                },
-                "exported_at": datetime.now().isoformat(),
-                "message_count": len(messages),
-                "messages": messages
-            }
-            
-            output_path = EXPORT_DIR / filename
-            with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(export_data, f, ensure_ascii=False, indent=2)
+            # Build message links
+            # For public chats: https://t.me/username/msgid
+            # For private chats: https://t.me/c/chat_id/msgid (need to convert ID)
+            links = []
+            if chat_username:
+                # Public chat with username
+                for msg_id in message_ids:
+                    links.append(f"https://t.me/{chat_username}/{msg_id}")
+            else:
+                # Private chat - use c/channel_id format
+                # Channel IDs need to be converted (remove -100 prefix if present)
+                channel_id = chat_id
+                if channel_id < 0:
+                    # Convert from -100xxxx to xxxx format
+                    channel_id = str(chat_id).replace("-100", "")
+                for msg_id in message_ids:
+                    links.append(f"https://t.me/c/{channel_id}/{msg_id}")
             
             total_time = time.time() - start_time
-            logger.info(f"Export complete: {len(messages)} messages to {filename} in {total_time:.2f}s")
+            logger.info(f"Export complete: {len(links)} messages in {total_time:.2f}s")
             
             return ExportResponse(
                 success=True,
-                message_count=len(messages),
-                filename=filename,
-                chat_name=chat_name
+                message_count=len(links),
+                chat_name=chat_name,
+                chat_username=chat_username,
+                chat_id=chat_id,
+                links=links
             )
             
     except HTTPException:
