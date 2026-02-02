@@ -421,7 +421,7 @@ export function ChatsPage() {
                   <Textarea
                     readOnly
                     value={exportResult.links.join('\n')}
-                    className="h-full min-h-[200px] font-mono text-sm resize-none"
+                    className="h-full min-h-[200px] max-h-[400px] font-mono text-sm resize-none overflow-y-scroll"
                     placeholder="消息链接将显示在这里..."
                   />
                 </div>
