@@ -59,6 +59,7 @@ async def login(
 @router.post("/password", response_model=TelegramAuthStatus)
 async def submit_password(
     request: TelegramPasswordRequest,
+    config: Config = Depends(get_api_config),
     _: str = Depends(get_current_user)
 ):
     """Submit 2FA password"""
@@ -66,7 +67,7 @@ async def submit_password(
         raise HTTPException(status_code=400, detail="Not waiting for password")
     
     try:
-        await auth_service.submit_password(request.password)
+        await auth_service.submit_password(request.password, config)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
         
@@ -81,8 +82,9 @@ async def submit_password(
 
 @router.post("/logout", response_model=MessageResponse)
 async def logout(
+    config: Config = Depends(get_api_config),
     _: str = Depends(get_current_user)
 ):
     """Logout from Telegram"""
-    await auth_service.logout()
+    await auth_service.logout(config)
     return MessageResponse(message="Logged out from Telegram")

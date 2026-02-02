@@ -1,9 +1,12 @@
 """
 Telegram Auth Service
 Handles asynchronous QR code login flow.
+
+Uses shared client manager to avoid SQLite session locking.
 """
 
 import asyncio
+import logging
 from enum import Enum
 from typing import Optional, Dict
 
@@ -12,6 +15,9 @@ from telethon.errors import SessionPasswordNeededError
 
 from tgf.core.client import TGClient
 from tgf.data.config import Config
+from api.services.telegram_client_manager import get_telegram_client_manager
+
+logger = logging.getLogger(__name__)
 
 
 class AuthState(str, Enum):
@@ -24,7 +30,6 @@ class AuthState(str, Enum):
 
 class TelegramAuthService:
     def __init__(self):
-        self._client: Optional[TGClient] = None
         self._qr_login = None
         self._state: AuthState = AuthState.IDLE
         self._qr_url: Optional[str] = None
@@ -50,38 +55,40 @@ class TelegramAuthService:
 
     @property
     def is_connected(self) -> bool:
-        return self._client and self._client.is_connected
+        manager = get_telegram_client_manager()
+        return manager.is_connected
 
-    async def get_client(self, config: Config, namespace: str = "default") -> TGClient:
-        if not self._client:
-            self._client = TGClient(config, namespace)
-            # Only connect if we suspect we might have a session
-            # But for checking status, we need to connect
-            await self._client.connect()
-        return self._client
+    async def get_client(self, config: Config) -> TGClient:
+        """Get shared client from manager"""
+        manager = get_telegram_client_manager()
+        return await manager.get_client(config)
 
     async def check_login_status(self, config: Config, namespace: str = "default") -> bool:
         """Check if currently logged in"""
-        client = await self.get_client(config, namespace)
-        if await client.client.is_user_authorized():
-            self._state = AuthState.SUCCESS
-            me = await client.get_me()
-            if me:
-                self._user_info = {
-                    "id": me.id,
-                    "username": me.username,
-                    "first_name": me.first_name,
-                    "last_name": me.last_name,
-                    "phone": me.phone,
-                    "is_premium": getattr(me, "premium", False)
-                }
-            return True
-        else:
-            if self._state == AuthState.SUCCESS:
-                # Was success, now not authorized? Reset
-                self._state = AuthState.IDLE
-                self._user_info = None
-            return False
+        try:
+            client = await self.get_client(config)
+            if await client.client.is_user_authorized():
+                self._state = AuthState.SUCCESS
+                me = await client.get_me()
+                if me:
+                    self._user_info = {
+                        "id": me.id,
+                        "username": me.username,
+                        "first_name": me.first_name,
+                        "last_name": me.last_name,
+                        "phone": me.phone,
+                        "is_premium": getattr(me, "premium", False)
+                    }
+                return True
+            else:
+                if self._state == AuthState.SUCCESS:
+                    # Was success, now not authorized? Reset
+                    self._state = AuthState.IDLE
+                    self._user_info = None
+                return False
+        except Exception as e:
+            logger.error(f"Failed to check login status: {e}")
+            raise
 
     async def start_login(self, config: Config, namespace: str = "default"):
         """Start QR login process"""
@@ -90,7 +97,7 @@ class TelegramAuthService:
             return
 
         self._reset_state()
-        client = await self.get_client(config, namespace)
+        client = await self.get_client(config)
         
         if await client.client.is_user_authorized():
             await self.check_login_status(config, namespace)
@@ -127,13 +134,14 @@ class TelegramAuthService:
             self._state = AuthState.FAILED
             self._error = str(e)
             
-    async def submit_password(self, password: str):
+    async def submit_password(self, password: str, config: Config):
         """Submit 2FA password"""
-        if self._state != AuthState.WAITING_PASSWORD or not self._client:
+        if self._state != AuthState.WAITING_PASSWORD:
             raise ValueError("Not waiting for password")
-            
+        
+        client = await self.get_client(config)
         try:
-            user = await self._client.client.sign_in(password=password)
+            user = await client.client.sign_in(password=password)
             self._state = AuthState.SUCCESS
             self._user_info = {
                 "id": user.id,
@@ -146,14 +154,19 @@ class TelegramAuthService:
         except Exception as e:
             # Keep waiting for password if wrong
             self._error = f"Login failed: {str(e)}"
-            # Don't change state to FAILED immediately, let retry?
-            # Or maybe just return error
             raise e
 
-    async def logout(self):
-        """Logout"""
-        if self._client and self._client.is_connected:
-            await self._client.logout()
+    async def logout(self, config: Config):
+        """Logout and disconnect shared client"""
+        manager = get_telegram_client_manager()
+        if manager.is_connected:
+            client = await self.get_client(config)
+            try:
+                await client.logout()
+            except Exception as e:
+                logger.warning(f"Logout error: {e}")
+            # Disconnect the shared client so it reconnects fresh next time
+            await manager.disconnect()
         self._reset_state()
 
     def _reset_state(self):
