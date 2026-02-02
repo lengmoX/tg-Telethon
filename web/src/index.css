@@ -119,13 +119,26 @@
   }
 
   html {
-    font-size: 16px;
-    /* Base font size */
+    /* Responsive base font: min 16px, preferred 1.1vw, max 20px */
+    font-size: clamp(16px, 1.1vw, 20px);
   }
 
   body {
     @apply bg-background text-foreground;
     font-size: 1rem;
     line-height: 1.6;
+  }
+
+  /* Responsive heading sizes */
+  h1 {
+    font-size: clamp(1.75rem, 2.5vw, 2.5rem);
+  }
+
+  h2 {
+    font-size: clamp(1.5rem, 2vw, 2rem);
+  }
+
+  h3 {
+    font-size: clamp(1.25rem, 1.5vw, 1.5rem);
   }
 }

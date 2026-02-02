@@ -105,7 +105,7 @@ export function Layout({ onLogout }: LayoutProps) {
   return (
     <div className="flex min-h-screen">
       {/* Desktop Sidebar */}
-      <aside className="hidden w-60 border-r bg-background md:block">
+      <aside className="hidden w-64 border-r bg-background md:block">
         <SidebarContent />
       </aside>
 
@@ -118,7 +118,7 @@ export function Layout({ onLogout }: LayoutProps) {
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-56 p-0">
+            <SheetContent side="left" className="w-64 p-0">
               <SidebarContent />
             </SheetContent>
           </Sheet>
@@ -130,7 +130,7 @@ export function Layout({ onLogout }: LayoutProps) {
 
         {/* Main Content */}
         <main className="flex-1 overflow-auto">
-          <div className="container max-w-6xl py-6 px-4 md:px-6">
+          <div className="container max-w-7xl py-8 px-6 md:px-8">
             <Outlet />
           </div>
         </main>

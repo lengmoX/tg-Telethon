@@ -108,15 +108,15 @@ export function Dashboard({ onLogout: _onLogout }: DashboardProps) {
   const enabledRules = rules.filter((r) => r.enabled).length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold tracking-tight">概览</h2>
           <p className="text-muted-foreground">监控转发服务状态和规则</p>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchData}>
-          <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+        <Button variant="outline" onClick={fetchData}>
+          <RefreshCw className="mr-2 h-4 w-4" />
           刷新
         </Button>
       </div>
@@ -129,18 +129,18 @@ export function Dashboard({ onLogout: _onLogout }: DashboardProps) {
       )}
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-3">
         {/* Watcher Status */}
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">服务状态</CardTitle>
-            <Activity className="h-5 w-5 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardTitle className="font-medium text-muted-foreground">服务状态</CardTitle>
+            <Activity className="h-6 w-6 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className={`h-2.5 w-2.5 rounded-full ${watcherStatus?.running ? 'bg-green-500' : 'bg-gray-300'}`} />
-                <span className="text-2xl font-bold">
+              <div className="flex items-center gap-3">
+                <div className={`h-3 w-3 rounded-full ${watcherStatus?.running ? 'bg-green-500' : 'bg-gray-300'}`} />
+                <span className="text-3xl font-bold">
                   {watcherStatus?.running ? '运行中' : '已停止'}
                 </span>
               </div>
@@ -171,29 +171,27 @@ export function Dashboard({ onLogout: _onLogout }: DashboardProps) {
           </CardContent>
         </Card>
 
-        {/* Rules Count */}
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">转发规则</CardTitle>
-            <Shield className="h-5 w-5 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardTitle className="font-medium text-muted-foreground">转发规则</CardTitle>
+            <Shield className="h-6 w-6 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{rules.length}</div>
-            <p className="text-sm text-muted-foreground">
+            <div className="text-3xl font-bold">{rules.length}</div>
+            <p className="text-muted-foreground mt-1">
               {enabledRules} 个已启用
             </p>
           </CardContent>
         </Card>
 
-        {/* Total Forwarded */}
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">已转发消息</CardTitle>
-            <MessageSquare className="h-5 w-5 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardTitle className="font-medium text-muted-foreground">已转发消息</CardTitle>
+            <MessageSquare className="h-6 w-6 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalForwarded.toLocaleString()}</div>
-            <p className="text-sm text-muted-foreground">总计</p>
+            <div className="text-3xl font-bold">{totalForwarded.toLocaleString()}</div>
+            <p className="text-muted-foreground mt-1">总计</p>
           </CardContent>
         </Card>
       </div>
