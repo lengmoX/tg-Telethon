@@ -6,8 +6,7 @@ Provides API endpoints for:
 - Exporting messages from a specific chat to JSON
 - Downloading exported files
 
-Note: Each request creates a new Telegram connection, which takes 2-5 seconds.
-This is expected behavior due to Telegram's protocol requirements.
+Note: Uses shared Telegram client to avoid SQLite session locking.
 """
 
 import json
@@ -28,7 +27,7 @@ from api.schemas import (
     MessageResponse,
 )
 from api.deps import get_api_config, get_current_user
-from tgf.core.client import TGClient
+from api.services.telegram_client_manager import get_shared_client
 from tgf.core.media import MediaHandler
 from tgf.data.config import Config
 
@@ -109,9 +108,9 @@ async def list_chats(
     logger.info(f"Fetching chat list (limit={limit}, type={chat_type})")
     
     try:
-        async with TGClient(config) as client:
+        async with get_shared_client(config) as client:
             connect_time = time.time()
-            logger.debug(f"Connected to Telegram in {connect_time - start_time:.2f}s")
+            logger.debug(f"Got client in {connect_time - start_time:.2f}s")
             
             dialogs = await client.get_dialogs(limit=limit)
             fetch_time = time.time()
@@ -168,7 +167,7 @@ async def export_chat(
     logger.info(f"Starting export for chat: {request.chat} (limit={request.limit}, type={request.msg_type})")
     
     try:
-        async with TGClient(config) as client:
+        async with get_shared_client(config) as client:
             media_handler = MediaHandler(client)
             
             # Resolve chat entity

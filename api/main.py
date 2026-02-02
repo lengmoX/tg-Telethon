@@ -40,12 +40,22 @@ async def lifespan(app: FastAPI):
     # Startup
     config = get_config()
     app.state.config = config
+    logger.info("TGF API starting up...")
     yield
-    # Shutdown - stop watcher gracefully
+    # Shutdown - stop watcher and disconnect Telegram client gracefully
+    logger.info("TGF API shutting down...")
     try:
         manager = get_watcher_manager(config)
         if manager.is_running:
             await manager.stop()
+    except Exception:
+        pass  # Ignore errors during shutdown
+    
+    # Disconnect shared Telegram client
+    try:
+        from api.services.telegram_client_manager import get_telegram_client_manager
+        tg_manager = get_telegram_client_manager()
+        await tg_manager.disconnect()
     except Exception:
         pass  # Ignore errors during shutdown
 
