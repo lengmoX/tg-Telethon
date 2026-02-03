@@ -21,10 +21,11 @@ from api.schemas import (
     ForwardResponse,
     ForwardResultItem,
 )
-from api.deps import get_api_config, get_current_user
-from api.services.telegram_client_manager import get_shared_client
+from api.deps import get_api_config, get_current_user, get_db
+from api.services.telegram_client_manager import get_active_client_safe
 from tgf.core.forwarder import MessageForwarder, ForwardMode
 from tgf.data.config import Config
+from tgf.data.database import Database
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,7 @@ def parse_message_link(link: str) -> Optional[Tuple[str, int]]:
 async def forward_messages(
     request: ForwardRequest,
     config: Config = Depends(get_api_config),
+    db: Database = Depends(get_db),
     _: str = Depends(get_current_user)
 ):
     """
@@ -108,7 +110,10 @@ async def forward_messages(
     failed = 0
     
     try:
-        async with get_shared_client(config) as client:
+        async with get_active_client_safe(db) as client:
+            if not client:
+                 raise HTTPException(status_code=503, detail="No active Telegram account")
+
             forwarder = MessageForwarder(client)
             
             # Resolve destination

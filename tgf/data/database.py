@@ -15,7 +15,7 @@ from datetime import datetime
 class Database:
     """SQLite database manager for TGF"""
     
-    SCHEMA_VERSION = 2   # Bumped for filters support
+    SCHEMA_VERSION = 3   # Bumped for telegram_accounts support
     
     def __init__(self, db_path: Path):
         self.db_path = db_path
@@ -148,7 +148,135 @@ class Database:
             
             await self._connection.commit()
     
-    # ============ Rule CRUD Operations ============
+    # ============ Telegram Account Management ============
+
+            # Create telegram_accounts table
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS telegram_accounts (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    phone           TEXT UNIQUE,
+                    api_id          INTEGER NOT NULL,
+                    api_hash        TEXT NOT NULL,
+                    session_name    TEXT NOT NULL UNIQUE,
+                    is_active       INTEGER DEFAULT 0,
+                    first_name      TEXT,
+                    username        TEXT,
+                    created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at      TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Index for is_active to quickly find the active account
+            await cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_accounts_active ON telegram_accounts(is_active)
+            """)
+
+            await self._connection.commit()
+
+    async def create_account(
+        self,
+        api_id: int,
+        api_hash: str,
+        session_name: str,
+        phone: Optional[str] = None
+    ) -> int:
+        """Create a new telegram account entry"""
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("""
+                INSERT INTO telegram_accounts (api_id, api_hash, session_name, phone, is_active)
+                VALUES (?, ?, ?, ?, 0)
+            """, (api_id, api_hash, session_name, phone))
+            await self._connection.commit()
+            return cursor.lastrowid
+            
+    async def get_account(self, account_id: int) -> Optional[Dict[str, Any]]:
+        """Get account by ID"""
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("SELECT * FROM telegram_accounts WHERE id = ?", (account_id,))
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def get_account_by_session(self, session_name: str) -> Optional[Dict[str, Any]]:
+        """Get account by session name"""
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("SELECT * FROM telegram_accounts WHERE session_name = ?", (session_name,))
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def get_active_account(self) -> Optional[Dict[str, Any]]:
+        """Get the currently active account"""
+        async with self._connection.cursor() as cursor:
+            # We assume only one active account for now
+            await cursor.execute("SELECT * FROM telegram_accounts WHERE is_active = 1 LIMIT 1")
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+            
+    async def get_all_accounts(self) -> List[Dict[str, Any]]:
+        """Get all accounts"""
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("SELECT * FROM telegram_accounts ORDER BY id")
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+            
+    async def set_active_account(self, account_id: int) -> bool:
+        """Set a specific account as active and deactivate others"""
+        async with self._connection.cursor() as cursor:
+            # Check if account exists
+            await cursor.execute("SELECT id FROM telegram_accounts WHERE id = ?", (account_id,))
+            if not await cursor.fetchone():
+                return False
+                
+            # Deactivate all
+            await cursor.execute("UPDATE telegram_accounts SET is_active = 0")
+            
+            # Activate target
+            await cursor.execute("UPDATE telegram_accounts SET is_active = 1 WHERE id = ?", (account_id,))
+            
+            await self._connection.commit()
+            return True
+            
+    async def update_account_info(
+        self, 
+        account_id: int, 
+        phone: Optional[str] = None,
+        first_name: Optional[str] = None, 
+        username: Optional[str] = None
+    ) -> bool:
+        """Update account profile info"""
+        updates = []
+        values = []
+        
+        if phone is not None:
+            updates.append("phone = ?")
+            values.append(phone)
+        if first_name is not None:
+            updates.append("first_name = ?")
+            values.append(first_name)
+        if username is not None:
+            updates.append("username = ?")
+            values.append(username)
+            
+        if not updates:
+            return False
+            
+        updates.append("updated_at = ?")
+        values.append(datetime.now().isoformat())
+        values.append(account_id)
+        
+        async with self._connection.cursor() as cursor:
+            await cursor.execute(
+                f"UPDATE telegram_accounts SET {', '.join(updates)} WHERE id = ?",
+                values
+            )
+            await self._connection.commit()
+            return cursor.rowcount > 0
+
+    async def delete_account(self, account_id: int) -> bool:
+        """Delete an account"""
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("DELETE FROM telegram_accounts WHERE id = ?", (account_id,))
+            await self._connection.commit()
+            return cursor.rowcount > 0
     
     async def create_rule(
         self,

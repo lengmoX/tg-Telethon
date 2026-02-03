@@ -8,10 +8,12 @@ The client stays connected and is reused across requests.
 import asyncio
 import logging
 from typing import Optional
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 from tgf.core.client import TGClient
-from tgf.data.config import Config
+from tgf.data.config import Config, get_config
+from tgf.data.database import Database
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +21,7 @@ logger = logging.getLogger(__name__)
 class TelegramClientManager:
     """
     Manages a shared Telegram client connection.
-    
-    Uses a singleton pattern to ensure only one client connection exists,
-    preventing SQLite session file locking issues.
+    Supports dynamic switching between accounts.
     """
     
     _instance: Optional['TelegramClientManager'] = None
@@ -29,10 +29,9 @@ class TelegramClientManager:
     
     def __init__(self):
         self._client: Optional[TGClient] = None
-        self._config: Optional[Config] = None
         self._connected = False
         self._connect_lock = asyncio.Lock()
-        self._usage_count = 0
+        self._current_session_name: Optional[str] = None
     
     @classmethod
     def get_instance(cls) -> 'TelegramClientManager':
@@ -41,41 +40,75 @@ class TelegramClientManager:
             cls._instance = cls()
         return cls._instance
     
-    async def get_client(self, config: Config) -> TGClient:
+    async def get_client(self) -> Optional[TGClient]:
+        """Get the currently connected client"""
+        if self._client and self._connected:
+            return self._client
+        return None
+    
+    async def switch_account(self, api_id: int, api_hash: str, session_name: str) -> TGClient:
         """
-        Get a connected Telegram client.
-        
-        Creates and connects a client if not already connected.
-        Reuses existing connection for subsequent calls.
+        Switch to a different account.
+        Disconnects current client if connected and connects new one.
         """
         async with self._connect_lock:
-            # Check if we need to create/reconnect
-            if self._client is None or not self._connected:
-                logger.info("Creating new Telegram client connection...")
-                self._config = config
-                self._client = TGClient(config)
-                
+            # If already connected to this session, return it
+            if (self._client and self._connected and 
+                self._current_session_name == session_name):
+                return self._client
+            
+            # Disconnect current
+            if self._client:
+                logger.info(f"Disconnecting current session: {self._current_session_name}")
                 try:
-                    await self._client.connect()
-                    self._connected = True
-                    logger.info("Telegram client connected successfully")
+                    await self._client.disconnect()
                 except Exception as e:
-                    logger.error(f"Failed to connect Telegram client: {e}")
+                    logger.warning(f"Error disconnecting client: {e}")
+                finally:
                     self._client = None
                     self._connected = False
-                    raise
+                    self._current_session_name = None
             
-            self._usage_count += 1
-            return self._client
-    
-    async def release_client(self):
-        """Release client usage (for tracking, doesn't disconnect)"""
-        self._usage_count = max(0, self._usage_count - 1)
-    
+            # Connect new
+            logger.info(f"Connecting to session: {session_name}")
+            config = get_config()
+            client = TGClient(
+                config=config,
+                namespace=session_name,
+                api_id=api_id,
+                api_hash=api_hash
+            )
+            
+            await client.connect()
+            self._client = client
+            self._connected = True
+            self._current_session_name = session_name
+            
+            return client
+
+    async def ensure_active_account(self, db: Database) -> Optional[TGClient]:
+        """
+        Ensure the client is connected to the active account stored in DB.
+        Should be called on startup or when needed.
+        """
+        active_account = await db.get_active_account()
+        
+        if not active_account:
+            # No active account found, disconnect if connected
+            if self._client:
+                await self.disconnect()
+            return None
+        
+        return await self.switch_account(
+            api_id=active_account["api_id"],
+            api_hash=active_account["api_hash"],
+            session_name=active_account["session_name"]
+        )
+
     async def disconnect(self):
         """Disconnect the shared client"""
         async with self._connect_lock:
-            if self._client and self._connected:
+            if self._client:
                 logger.info("Disconnecting Telegram client...")
                 try:
                     await self._client.disconnect()
@@ -84,16 +117,16 @@ class TelegramClientManager:
                 finally:
                     self._connected = False
                     self._client = None
+                    self._current_session_name = None
     
     @property
     def is_connected(self) -> bool:
         """Check if client is connected"""
         return self._connected and self._client is not None
-    
+
     @property
-    def usage_count(self) -> int:
-        """Get current usage count"""
-        return self._usage_count
+    def current_session_name(self) -> Optional[str]:
+        return self._current_session_name
 
 
 # Global instance getter
@@ -103,20 +136,22 @@ def get_telegram_client_manager() -> TelegramClientManager:
 
 
 @asynccontextmanager
-async def get_shared_client(config: Config):
+async def get_active_client_safe(db: Optional[Database] = None):
     """
-    Context manager for getting a shared Telegram client.
-    
-    Usage:
-        async with get_shared_client(config) as client:
-            dialogs = await client.get_dialogs()
-    
-    This avoids creating new connections per request and prevents
-    SQLite session file locking issues.
+    Context manager to get the active client.
+    If db is provided, ensures persistence active account is loaded.
     """
     manager = get_telegram_client_manager()
-    client = await manager.get_client(config)
-    try:
+    
+    if db:
+        # If we have DB access, ensure we are connected to the right account
+        client = await manager.ensure_active_account(db)
+    else:
+        client = await manager.get_client()
+        
+    if not client:
+        # Fallback or error? For now yield None and let caller handle
+        yield None
+    else:
         yield client
-    finally:
-        await manager.release_client()
+

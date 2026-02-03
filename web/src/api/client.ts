@@ -377,3 +377,67 @@ export const importBackup = async (file: File): Promise<BackupImportResponse> =>
     body: formData,
   });
 };
+
+// ============================================================
+// Account Management API
+// ============================================================
+
+export interface AccountInfo {
+  id: number;
+  phone: string | null;
+  session_name: string;
+  is_active: boolean;
+  first_name: string | null;
+  username: string | null;
+  created_at: string | null;
+}
+
+export interface LoginInitRequest {
+  api_id: number;
+  api_hash: string;
+}
+
+export interface LoginStatusResponse {
+  session_id: string;
+  status: 'initializing' | 'connecting' | 'waiting_qr' | 'scanned' | '2fa_required' | 'logged_in' | 'error';
+  qr_url: string | null;
+  error: string | null;
+}
+
+export async function getAccounts(): Promise<AccountInfo[]> {
+  return fetchApi<AccountInfo[]>('/accounts');
+}
+
+export async function initLogin(api_id: number, api_hash: string): Promise<LoginStatusResponse> {
+  return fetchApi<LoginStatusResponse>('/accounts/login/init', {
+    method: 'POST',
+    body: JSON.stringify({ api_id, api_hash }),
+  });
+}
+
+export async function checkLoginStatus(session_id: string): Promise<LoginStatusResponse> {
+  return fetchApi<LoginStatusResponse>(`/accounts/login/${session_id}/status`);
+}
+
+export async function verify2FA(session_id: string, password: string): Promise<LoginStatusResponse> {
+  return fetchApi<LoginStatusResponse>(`/accounts/login/${session_id}/2fa`, {
+    method: 'POST',
+    body: JSON.stringify({ password }),
+  });
+}
+
+export async function confirmLogin(session_id: string): Promise<{ success: boolean; account_id: number }> {
+  return fetchApi<{ success: boolean; account_id: number }>(`/accounts/login/${session_id}/confirm`, {
+    method: 'POST',
+  });
+}
+
+export async function activateAccount(account_id: number): Promise<{ success: boolean }> {
+  return fetchApi<{ success: boolean }>(`/accounts/${account_id}/activate`, {
+    method: 'POST',
+  });
+}
+
+export async function deleteAccount(account_id: number): Promise<{ success: boolean }> {
+  return fetchApi<{ success: boolean }>(`/accounts/${account_id}`, { method: 'DELETE' });
+}

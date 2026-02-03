@@ -1,9 +1,7 @@
-version: '3.8'
+version: '3'
 
 services:
   tgf:
-    # 替换为您 Docker Hub 的用户名和仓库名
-    # Replace with your Docker Hub username/repo
     image: moleng1/tg-telethon:latest
     container_name: tgf_app
     restart: unless-stopped

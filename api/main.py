@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from tgf import __version__
 from tgf.data.config import get_config
 
-from api.routers import rules, watcher, states, auth, telegram, chats, forward, backup
+from api.routers import rules, watcher, states, auth, telegram, chats, forward, backup, accounts
 from api.services.watcher_manager import get_watcher_manager
 
 # Configure logging
@@ -77,7 +77,8 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(auth.router, prefix="/api/auth", tags=["认证"])
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(accounts.router, prefix="/api/accounts", tags=["accounts"])
 app.include_router(telegram.router, prefix="/api/telegram", tags=["telegram"])
 app.include_router(rules.router, prefix="/api/rules", tags=["rules"])
 app.include_router(watcher.router, prefix="/api/watcher", tags=["watcher"])

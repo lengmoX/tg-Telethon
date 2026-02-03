@@ -16,7 +16,7 @@
  */
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { LoginPage, Dashboard, TelegramLogin, RulesPage, ChatsPage, ForwardPage, NotFound } from '@/pages';
+import { LoginPage, Dashboard, RulesPage, ChatsPage, ForwardPage, NotFound, AccountsPage } from '@/pages';
 import { Layout } from '@/components';
 import { Toaster } from '@/components/ui/sonner';
 import { isAuthenticated } from '@/api';
@@ -70,7 +70,7 @@ function App() {
           <Route path="dashboard" element={<Dashboard onLogout={() => setAuth(false)} />} />
 
           {/* Telegram - Account connection via QR code */}
-          <Route path="telegram" element={<TelegramLogin />} />
+          <Route path="telegram" element={<AccountsPage />} />
 
           {/* Rules - CRUD management for forwarding rules */}
           <Route path="rules" element={<RulesPage />} />

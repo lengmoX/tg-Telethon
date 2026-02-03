@@ -26,10 +26,11 @@ from api.schemas import (
     ExportResponse,
     MessageResponse,
 )
-from api.deps import get_api_config, get_current_user
-from api.services.telegram_client_manager import get_shared_client
+from api.deps import get_api_config, get_current_user, get_db
+from api.services.telegram_client_manager import get_active_client_safe
 from tgf.core.media import MediaHandler
 from tgf.data.config import Config
+from tgf.data.database import Database
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -94,6 +95,7 @@ async def list_chats(
     limit: int = Query(100, ge=1, le=500, description="Maximum chats to return"),
     chat_type: str = Query("all", pattern="^(all|user|group|channel)$", description="Filter by type"),
     config: Config = Depends(get_api_config),
+    db: Database = Depends(get_db),
     _: str = Depends(get_current_user)
 ):
     """
@@ -108,7 +110,10 @@ async def list_chats(
     logger.info(f"Fetching chat list (limit={limit}, type={chat_type})")
     
     try:
-        async with get_shared_client(config) as client:
+        async with get_active_client_safe(db) as client:
+            if not client:
+                 raise HTTPException(status_code=503, detail="No active Telegram account")
+
             connect_time = time.time()
             logger.debug(f"Got client in {connect_time - start_time:.2f}s")
             
@@ -155,6 +160,7 @@ async def list_chats(
 async def export_chat(
     request: ExportRequest,
     config: Config = Depends(get_api_config),
+    db: Database = Depends(get_db),
     _: str = Depends(get_current_user)
 ):
     """
@@ -167,7 +173,10 @@ async def export_chat(
     logger.info(f"Starting export for chat: {request.chat} (limit={request.limit}, type={request.msg_type})")
     
     try:
-        async with get_shared_client(config) as client:
+        async with get_active_client_safe(db) as client:
+            if not client:
+                 raise HTTPException(status_code=503, detail="No active Telegram account")
+                 
             media_handler = MediaHandler(client)
             
             # Resolve chat entity

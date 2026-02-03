@@ -28,7 +28,9 @@ class TGClient:
     def __init__(
         self,
         config: Optional[Config] = None,
-        namespace: Optional[str] = None
+        namespace: Optional[str] = None,
+        api_id: Optional[int] = None,
+        api_hash: Optional[str] = None
     ):
         """
         Initialize TGClient
@@ -36,13 +38,28 @@ class TGClient:
         Args:
             config: Configuration object (uses global config if None)
             namespace: Account namespace (uses config namespace if None)
+            api_id: API ID (overrides config)
+            api_hash: API Hash (overrides config)
         """
         self.config = config or get_config()
         self.namespace = namespace or self.config.namespace
+        
+        # dynamic credentials
+        self._api_id = api_id or self.config.api_id
+        self._api_hash = api_hash or self.config.api_hash
+        
         self.logger = get_logger("tgf.client")
         
         self._client: Optional[TelegramClient] = None
         self._session_manager = SessionManager(self.config.sessions_dir)
+    
+    @property
+    def api_id(self) -> Optional[int]:
+        return self._api_id
+
+    @property
+    def api_hash(self) -> Optional[str]:
+        return self._api_hash
     
     @property
     def client(self) -> TelegramClient:
@@ -58,11 +75,11 @@ class TGClient:
     
     def _ensure_credentials(self):
         """Ensure API credentials are configured"""
-        if not self.config.has_credentials():
+        if not self._api_id or not self._api_hash:
             raise ConfigError(
                 "Telegram API credentials not configured. "
                 "Set TGF_API_ID and TGF_API_HASH environment variables, "
-                "or get credentials from https://my.telegram.org"
+                "or provide them when initializing the client."
             )
     
     async def connect(self) -> bool:
@@ -78,8 +95,8 @@ class TGClient:
         
         self._client = TelegramClient(
             str(session_path),
-            self.config.api_id,
-            self.config.api_hash
+            self._api_id,
+            self._api_hash
         )
         
         await self._client.connect()

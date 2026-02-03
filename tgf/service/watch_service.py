@@ -63,16 +63,31 @@ class WatchService:
     
     async def connect(self) -> bool:
         """Connect to Telegram and database"""
-        # Connect to Telegram
-        self._client = TGClient(self.config, self.namespace)
+        # Connect to database first
+        self._db = Database(self.config.db_path)
+        await self._db.connect()
+        
+        # Get active account
+        active_account = await self._db.get_active_account()
+        
+        if active_account:
+            self.logger.info(f"Using active account: {active_account['session_name']}")
+            self.namespace = active_account["session_name"]
+            # Connect to Telegram with active account creds
+            self._client = TGClient(
+                self.config, 
+                namespace=self.namespace,
+                api_id=active_account["api_id"],
+                api_hash=active_account["api_hash"]
+            )
+        else:
+            self.logger.warning("No active account found in DB, using config defaults")
+            self._client = TGClient(self.config, self.namespace)
+            
         connected = await self._client.connect()
         
         if connected:
             self._forwarder = MessageForwarder(self._client)
-        
-        # Connect to database
-        self._db = Database(self.config.db_path)
-        await self._db.connect()
         
         return connected
     
