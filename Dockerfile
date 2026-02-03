@@ -36,8 +36,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Download and install N_m3u8DL-RE (Linux x64)
-# Using a fixed version for stability
-RUN wget https://github.com/nilaoda/N_m3u8DL-RE/releases/download/v0.2.1-beta/N_m3u8DL-RE_v0.2.1-beta_linux-x64_20240828.tar.gz -O /tmp/m3u8.tar.gz \
+# Using a fixed version for stability (override via build args if needed)
+ARG M3U8_RE_VERSION=v0.5.1-beta
+ARG M3U8_RE_ASSET=N_m3u8DL-RE_v0.5.1-beta_linux-x64_20251029.tar.gz
+RUN wget -nv https://github.com/nilaoda/N_m3u8DL-RE/releases/download/${M3U8_RE_VERSION}/${M3U8_RE_ASSET} -O /tmp/m3u8.tar.gz \
     && tar -xzf /tmp/m3u8.tar.gz -C /usr/local/bin/ --strip-components=1 \
     && chmod +x /usr/local/bin/N_m3u8DL-RE \
     && rm /tmp/m3u8.tar.gz
