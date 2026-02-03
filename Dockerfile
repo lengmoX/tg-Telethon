@@ -31,6 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     python3-dev \
     wget \
+    curl \
     ca-certificates \
     xz-utils \
     && rm -rf /var/lib/apt/lists/*
@@ -39,10 +40,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Using a fixed version for stability (override via build args if needed)
 ARG M3U8_RE_VERSION=v0.5.1-beta
 ARG M3U8_RE_ASSET=N_m3u8DL-RE_v0.5.1-beta_linux-x64_20251029.tar.gz
-RUN wget -nv https://github.com/nilaoda/N_m3u8DL-RE/releases/download/${M3U8_RE_VERSION}/${M3U8_RE_ASSET} -O /tmp/m3u8.tar.gz \
-    && tar -xzf /tmp/m3u8.tar.gz -C /usr/local/bin/ --strip-components=1 \
-    && chmod +x /usr/local/bin/N_m3u8DL-RE \
-    && rm /tmp/m3u8.tar.gz
+ARG M3U8_RE_URL=""
+RUN set -eux; \
+    if [ -n "$M3U8_RE_URL" ]; then \
+      M3U8_URL="$M3U8_RE_URL"; \
+    else \
+      M3U8_URL="https://github.com/nilaoda/N_m3u8DL-RE/releases/download/${M3U8_RE_VERSION}/${M3U8_RE_ASSET}"; \
+    fi; \
+    echo "Downloading N_m3u8DL-RE from $M3U8_URL"; \
+    curl -fL --retry 3 --retry-connrefused --retry-delay 2 -o /tmp/m3u8.tar.gz "$M3U8_URL"; \
+    tar -xzf /tmp/m3u8.tar.gz -C /usr/local/bin/ --strip-components=1; \
+    chmod +x /usr/local/bin/N_m3u8DL-RE; \
+    rm /tmp/m3u8.tar.gz
 
 # Install Python dependencies
 COPY requirements.txt .
