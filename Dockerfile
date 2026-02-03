@@ -49,7 +49,7 @@ RUN set -eux; \
     fi; \
     echo "Downloading N_m3u8DL-RE from $M3U8_URL"; \
     curl -fL --retry 3 --retry-connrefused --retry-delay 2 -o /tmp/m3u8.tar.gz "$M3U8_URL"; \
-    tar -xzf /tmp/m3u8.tar.gz -C /usr/local/bin/ --strip-components=1; \
+    tar -xzf /tmp/m3u8.tar.gz -C /usr/local/bin/; \
     chmod +x /usr/local/bin/N_m3u8DL-RE; \
     rm /tmp/m3u8.tar.gz
 
