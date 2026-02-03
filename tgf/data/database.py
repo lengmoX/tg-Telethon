@@ -15,7 +15,7 @@ from datetime import datetime
 class Database:
     """SQLite database manager for TGF"""
     
-    SCHEMA_VERSION = 3   # Bumped for telegram_accounts support
+    SCHEMA_VERSION = 4   # Bumped for tasks support
     
     def __init__(self, db_path: Path):
         self.db_path = db_path
@@ -172,6 +172,140 @@ class Database:
             """)
 
             await self._connection.commit()
+
+            # ============ Task Management ============
+            
+            # Create tasks table
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    type            TEXT NOT NULL,
+                    status          TEXT NOT NULL,
+                    progress        REAL DEFAULT 0.0,
+                    stage           TEXT,
+                    details         TEXT,
+                    error           TEXT,
+                    created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at      TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            await cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)
+            """)
+
+            await self._connection.commit()
+
+    # ============ App Settings ============
+            
+            # Create app settings table (key/value)
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    key         TEXT PRIMARY KEY,
+                    value       TEXT NOT NULL,
+                    updated_at  TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            await self._connection.commit()
+
+    # ============ Task CRUD ============
+
+    async def create_task(self, task_type: str, details: str) -> int:
+        """Create a new task"""
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("""
+                INSERT INTO tasks (type, status, details, stage, progress)
+                VALUES (?, 'pending', ?, 'init', 0)
+            """, (task_type, details))
+            await self._connection.commit()
+            return cursor.lastrowid
+
+    async def get_task(self, task_id: int) -> Optional[Dict[str, Any]]:
+        """Get task by ID"""
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def get_all_tasks(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get all tasks"""
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("SELECT * FROM tasks ORDER BY id DESC LIMIT ?", (limit,))
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    async def update_task(self, task_id: int, **kwargs) -> bool:
+        """Update task status/progress"""
+        if not kwargs:
+            return False
+            
+        set_parts = []
+        values = []
+        
+        allowed = {"status", "progress", "stage", "details", "error"}
+        for key, value in kwargs.items():
+            if key in allowed:
+                set_parts.append(f"{key} = ?")
+                values.append(value)
+        
+        if not set_parts:
+            return False
+            
+        set_parts.append("updated_at = ?")
+        values.append(datetime.now().isoformat())
+        values.append(task_id)
+        
+        async with self._connection.cursor() as cursor:
+            await cursor.execute(
+                f"UPDATE tasks SET {', '.join(set_parts)} WHERE id = ?",
+                values
+            )
+            await self._connection.commit()
+            return cursor.rowcount > 0
+
+    async def delete_task(self, task_id: int) -> bool:
+        """Delete task"""
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+            await self._connection.commit()
+            return cursor.rowcount > 0
+
+    # ============ Settings CRUD ============
+
+    async def get_setting(self, key: str) -> Optional[str]:
+        """Get a single setting by key"""
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("SELECT value FROM app_settings WHERE key = ?", (key,))
+            row = await cursor.fetchone()
+            return row["value"] if row else None
+
+    async def get_settings(self, keys: Optional[List[str]] = None) -> Dict[str, str]:
+        """Get multiple settings by keys (or all if None)"""
+        async with self._connection.cursor() as cursor:
+            if keys:
+                placeholders = ",".join("?" for _ in keys)
+                await cursor.execute(
+                    f"SELECT key, value FROM app_settings WHERE key IN ({placeholders})",
+                    keys,
+                )
+            else:
+                await cursor.execute("SELECT key, value FROM app_settings")
+            rows = await cursor.fetchall()
+            return {row["key"]: row["value"] for row in rows}
+
+    async def set_setting(self, key: str, value: str) -> bool:
+        """Set a single setting by key"""
+        async with self._connection.cursor() as cursor:
+            await cursor.execute(
+                """
+                INSERT OR REPLACE INTO app_settings (key, value, updated_at)
+                VALUES (?, ?, ?)
+                """,
+                (key, value, datetime.now().isoformat()),
+            )
+            await self._connection.commit()
+            return cursor.rowcount > 0
 
     async def create_account(
         self,

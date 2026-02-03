@@ -15,8 +15,12 @@ from fastapi.staticfiles import StaticFiles
 from tgf import __version__
 from tgf.data.config import get_config
 
-from api.routers import rules, watcher, states, auth, telegram, chats, forward, backup, accounts
+from api.routers import rules, watcher, states, auth, telegram, chats, forward, backup, accounts, tasks, settings
 from api.services.watcher_manager import get_watcher_manager
+from api.services.task_manager import TaskManager
+from api.services.telegram import TelegramService
+from tgf.data.database import Database
+from tgf.utils.upload_settings import load_upload_settings
 
 # Configure logging
 logging.basicConfig(
@@ -40,6 +44,22 @@ async def lifespan(app: FastAPI):
     # Startup
     config = get_config()
     app.state.config = config
+    
+    # Initialize TaskManager
+    db = Database(config.db_path)
+    await db.connect() # Connect temporarily to init schema if needed, or pass db instance
+                  # TaskManager gets its own db/deps usually via DI, but for singleton init:
+    
+    # Actually TaskManager needs dependencies. 
+    # Let's initialize it with fresh instances or rely on it being initialized on first use if strictly DI
+    # But for background loop it needs explicit start.
+    # For now, let's just expose it via DI and let the first request trigger or use a startup event if it has background loops.
+    # The plan said "Initialize TaskManager on startup".
+    
+    tg_service = TelegramService(config)
+    TaskManager.initialize(db, tg_service)
+    await load_upload_settings(db)
+    
     logger.info("TGF API starting up...")
     yield
     # Shutdown - stop watcher and disconnect Telegram client gracefully
@@ -51,10 +71,12 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass  # Ignore errors during shutdown
     
+    # Close shared DB connection used for TaskManager if we kept one
+    await db.close()
+
     # Disconnect shared Telegram client
     try:
-        from api.services.telegram_client_manager import get_telegram_client_manager
-        tg_manager = get_telegram_client_manager()
+        tg_manager = tg_service.client_manager
         await tg_manager.disconnect()
     except Exception:
         pass  # Ignore errors during shutdown
@@ -85,7 +107,9 @@ app.include_router(watcher.router, prefix="/api/watcher", tags=["watcher"])
 app.include_router(states.router, prefix="/api/states", tags=["states"])
 app.include_router(chats.router, prefix="/api/chats", tags=["chats"])
 app.include_router(forward.router, prefix="/api/forward", tags=["forward"])
+app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
 app.include_router(backup.router, prefix="/api/backup", tags=["backup"])
+app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 
 
 @app.get("/api/health")

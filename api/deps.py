@@ -111,3 +111,9 @@ async def get_optional_user(
         return None
     
     return verify_token(credentials.credentials)
+
+from api.services.telegram import TelegramService
+
+async def get_telegram_service(config: Config = Depends(get_api_config)) -> TelegramService:
+    """Get Telegram service instance"""
+    return TelegramService(config)

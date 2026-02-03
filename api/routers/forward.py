@@ -20,12 +20,22 @@ from api.schemas import (
     ForwardRequest,
     ForwardResponse,
     ForwardResultItem,
+    M3u8ForwardRequest,
+    M3u8ForwardResponse,
+
 )
 from api.deps import get_api_config, get_current_user, get_db
 from api.services.telegram_client_manager import get_active_client_safe
 from tgf.core.forwarder import MessageForwarder, ForwardMode
 from tgf.data.config import Config
+from tgf.core.forwarder import MessageForwarder, ForwardMode
+from tgf.data.config import Config
 from tgf.data.database import Database
+from tgf.utils.m3u8 import M3u8Downloader
+from api.services.task_manager import TaskManager
+import time
+import os
+
 
 logger = logging.getLogger(__name__)
 
@@ -252,3 +262,38 @@ async def forward_messages(
     except Exception as e:
         logger.error(f"Forward failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Forward failed: {str(e)}")
+
+
+
+@router.post("/m3u8", response_model=M3u8ForwardResponse)
+async def forward_m3u8(
+    request: M3u8ForwardRequest,
+    config: Config = Depends(get_api_config),
+    db: Database = Depends(get_db),
+    _: str = Depends(get_current_user)
+):
+    """
+    Download M3U8 stream and forward to Telegram (Async Task)
+    """
+    logger.info(f"M3U8 Forward request: {request.url} to {request.dest}")
+    
+    try:
+        manager = TaskManager.get_instance()
+        task_id = await manager.submit_m3u8_task(
+            url=request.url,
+            dest=request.dest,
+            filename=request.filename,
+            caption=request.caption
+        )
+        
+        return M3u8ForwardResponse(
+            success=True,
+            status="queued",
+            task_id=task_id
+        )
+        
+    except Exception as e:
+        logger.error(f"M3U8 Forward request failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+    
+

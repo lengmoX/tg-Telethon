@@ -325,6 +325,89 @@ export async function forwardMessages(request: ForwardRequest): Promise<ForwardR
   });
 }
 
+// M3U8 API
+export interface M3u8ForwardRequest {
+  url: string;
+  dest: string;
+  filename?: string;
+  caption?: string;
+}
+
+export interface M3u8ForwardResponse {
+  success: boolean;
+  status: string;
+  task_id: number;
+  error?: string;
+}
+
+export async function forwardM3u8(data: M3u8ForwardRequest): Promise<M3u8ForwardResponse> {
+  return fetchApi<M3u8ForwardResponse>('/forward/m3u8', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// Tasks API
+export interface Task {
+  id: number;
+  type: string;
+  status: string;
+  progress: number | null;
+  stage?: string | null;
+  details?: string | null;
+  error?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface TaskListResponse {
+  tasks: Task[];
+  total: number;
+}
+
+export async function getTasks(): Promise<TaskListResponse> {
+  return fetchApi<TaskListResponse>('/tasks');
+}
+
+export async function retryTask(taskId: number): Promise<{ message: string }> {
+  return fetchApi<{ message: string }>(`/tasks/${taskId}/retry`, { method: 'POST' });
+}
+
+export async function cancelTask(taskId: number): Promise<{ message: string }> {
+  return fetchApi<{ message: string }>(`/tasks/${taskId}/cancel`, { method: 'POST' });
+}
+
+export async function deleteTask(taskId: number): Promise<{ message: string }> {
+  return fetchApi<{ message: string }>(`/tasks/${taskId}`, { method: 'DELETE' });
+}
+
+// Upload Settings API
+export interface UploadSettings {
+  threads: number;
+  limit: number;
+  part_size_kb: number;
+}
+
+export interface UploadSettingsUpdate {
+  threads?: number;
+  limit?: number;
+  part_size_kb?: number;
+}
+
+export async function getUploadSettings(): Promise<UploadSettings> {
+  return fetchApi<UploadSettings>('/settings/upload');
+}
+
+export async function updateUploadSettings(
+  updates: UploadSettingsUpdate
+): Promise<UploadSettings> {
+  return fetchApi<UploadSettings>('/settings/upload', {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  });
+}
+
+
 // Backup API
 export interface BackupImportResponse {
   success: boolean;

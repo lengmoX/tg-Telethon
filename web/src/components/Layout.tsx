@@ -8,6 +8,7 @@ import {
   Settings,
   ChevronRight,
   Inbox,
+  RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -35,6 +36,7 @@ export function Layout({ onLogout }: LayoutProps) {
     { title: '规则管理', icon: Shield, path: '/rules' },
     { title: '对话管理', icon: Inbox, path: '/chats' },
     { title: '消息转发', icon: MessageSquare, path: '/forward' },
+    { title: '任务管理', icon: RefreshCw, path: '/tasks' },
     { title: '账号连接', icon: Settings, path: '/telegram' },
   ];
 

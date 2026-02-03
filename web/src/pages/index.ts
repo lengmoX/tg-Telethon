@@ -6,3 +6,4 @@ export { RulesPage } from './RulesPage';
 export { ChatsPage } from './ChatsPage';
 export { ForwardPage } from './ForwardPage';
 export { NotFound } from './NotFound';
+export { TasksPage } from './TasksPage';

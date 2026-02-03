@@ -16,7 +16,7 @@
  */
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { LoginPage, Dashboard, RulesPage, ChatsPage, ForwardPage, NotFound, AccountsPage } from '@/pages';
+import { LoginPage, Dashboard, RulesPage, ChatsPage, ForwardPage, NotFound, AccountsPage, TasksPage } from '@/pages';
 import { Layout } from '@/components';
 import { Toaster } from '@/components/ui/sonner';
 import { isAuthenticated } from '@/api';
@@ -80,6 +80,9 @@ function App() {
 
           {/* Forward - One-time message forwarding */}
           <Route path="forward" element={<ForwardPage />} />
+
+          {/* Tasks - Background task management */}
+          <Route path="tasks" element={<TasksPage />} />
 
           {/* 404 Catch-all - Handle unknown routes */}
           <Route path="*" element={<NotFound />} />

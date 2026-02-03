@@ -190,5 +190,59 @@ class MessageResponse(BaseModel):
 
 
 class ErrorResponse(BaseModel):
-    detail: str
     success: bool = False
+
+
+# ============== M3U8 ==============
+
+class M3u8ForwardRequest(BaseModel):
+    """Request to download and forward M3U8 stream"""
+    url: str = Field(..., description="M3U8 URL")
+    dest: str = Field("me", description="Destination chat (me, @username, or chat_id)")
+    filename: Optional[str] = Field(None, description="Custom filename (optional)")
+    caption: Optional[str] = Field(None, description="Caption for video")
+
+
+class M3u8ForwardResponse(BaseModel):
+    """Response for M3U8 forward operation"""
+    success: bool
+    status: str
+    task_id: int
+    error: Optional[str] = None
+
+
+# ============== Tasks ==============
+
+class TaskResponse(BaseModel):
+    """Response for task details"""
+    id: int
+    type: str
+    status: str
+    progress: float
+    stage: Optional[str] = None
+    details: Optional[str] = None
+    error: Optional[str] = None
+    created_at: Optional[str]
+    updated_at: Optional[str]
+
+class TaskListResponse(BaseModel):
+    """List of tasks"""
+    tasks: List[TaskResponse]
+    total: int
+
+
+# ============== Upload Settings ==============
+
+class UploadSettings(BaseModel):
+    """Upload settings for parallel/concurrent uploads"""
+    threads: int = Field(..., ge=1, le=32, description="Workers per upload")
+    limit: int = Field(..., ge=1, le=8, description="Max concurrent uploads")
+    part_size_kb: int = Field(..., ge=1, le=512, description="Part size in KB")
+
+
+class UploadSettingsUpdate(BaseModel):
+    """Partial update for upload settings"""
+    threads: Optional[int] = Field(None, ge=1, le=32)
+    limit: Optional[int] = Field(None, ge=1, le=8)
+    part_size_kb: Optional[int] = Field(None, ge=1, le=512)
+

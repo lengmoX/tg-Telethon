@@ -19,6 +19,7 @@ import qrcode
 from tgf.data.config import Config, get_config
 from tgf.data.session import SessionManager
 from tgf.utils.logger import get_logger
+from tgf.utils.parallel_upload import upload_file_parallel
 from tgf.utils.exceptions import AuthError, ConfigError
 
 
@@ -262,6 +263,19 @@ class TGClient:
         
         # For strings (username, link), use direct lookup
         return await self._client.get_entity(entity)
+
+    async def get_input_entity(self, entity: Union[str, int]):
+        """
+        Get input entity by username/ID/link.
+        Mirrors TelegramClient.get_input_entity for cases where input
+        entity is required by API calls.
+        """
+        if not self._client:
+            raise AuthError("Client not initialized. Call connect() first.")
+        # Handle "me" keyword for Saved Messages
+        if isinstance(entity, str) and entity.lower() == "me":
+            return "me"
+        return await self._client.get_input_entity(entity)
     
     async def _resolve_numeric_id(self, entity_id: int):
         """
@@ -379,6 +393,25 @@ class TGClient:
     async def download_media(self, message, file=None, **kwargs):
         """Download media from message"""
         return await self._client.download_media(message, file, **kwargs)
+
+    async def upload_file_parallel(
+        self,
+        file,
+        *,
+        part_size_kb: int,
+        workers: int,
+        progress_callback=None
+    ):
+        """Upload a file in parallel and return InputFile/InputFileBig."""
+        if not self._client:
+            raise AuthError("Client not initialized. Call connect() first.")
+        return await upload_file_parallel(
+            self._client,
+            file,
+            part_size_kb=part_size_kb,
+            workers=workers,
+            progress_callback=progress_callback,
+        )
     
     async def __aenter__(self):
         await self.connect()

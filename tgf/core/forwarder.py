@@ -45,6 +45,7 @@ from telethon.errors import (
 from tgf.core.client import TGClient
 from tgf.utils.logger import get_logger
 from tgf.utils.exceptions import ForwardError, RestrictedChannelError
+from tgf.utils.upload_settings import get_upload_settings, get_upload_semaphore
 
 
 class ForwardMode(str, Enum):
@@ -425,18 +426,28 @@ class MessageForwarder:
             
             # Upload with preserved attributes
             self.logger.debug(f"Uploading with mime_type={mime_type}, attrs={len(attributes) if attributes else 0}")
-            
-            result = await self.client.send_file(
-                target_chat,
-                file=tmp_path,
-                caption=caption,
-                formatting_entities=filter_entities(entities, caption),
-                attributes=attributes,  # Preserve original attributes (filename, video size, duration, etc.)
-                mime_type=mime_type,    # Preserve MIME type
-                voice_note=is_voice,
-                supports_streaming=is_video,
-                progress_callback=progress_callback
-            )
+
+            settings = get_upload_settings()
+            upload_semaphore = get_upload_semaphore()
+
+            async with upload_semaphore:
+                input_file = await self.client.upload_file_parallel(
+                    tmp_path,
+                    part_size_kb=settings.part_size_kb,
+                    workers=settings.threads,
+                    progress_callback=progress_callback,
+                )
+
+                result = await self.client.send_file(
+                    target_chat,
+                    file=input_file,
+                    caption=caption,
+                    formatting_entities=filter_entities(entities, caption),
+                    attributes=attributes,  # Preserve original attributes (filename, video size, duration, etc.)
+                    mime_type=mime_type,    # Preserve MIME type
+                    voice_note=is_voice,
+                    supports_streaming=is_video,
+                )
             
             return ForwardResult(
                 success=True,
